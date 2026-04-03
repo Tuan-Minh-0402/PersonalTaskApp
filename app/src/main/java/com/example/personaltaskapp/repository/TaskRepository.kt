@@ -6,22 +6,19 @@ import kotlinx.coroutines.flow.Flow
 
 class TaskRepository(private val dao: TaskDao) {
 
-    // existing flow
-    val tasks: Flow<List<Task>> = dao.getAllTasks()
+    fun getAllTasks(): Flow<List<Task>> = dao.getAllTasks()
+
+    val tasks: Flow<List<Task>> get() = getAllTasks()
+
+    fun getActiveTasks(): Flow<List<Task>> = dao.getActiveTasks()
+
+    fun getFlexibleUnscheduledTasks(): Flow<List<Task>> = dao.getFlexibleUnscheduledTasks()
+
+    fun getScheduledTasks(): Flow<List<Task>> = dao.getScheduledTasks()
 
     suspend fun addTask(task: Task) = dao.insert(task)
 
     suspend fun updateTask(task: Task) = dao.update(task)
 
     suspend fun deleteTask(task: Task) = dao.delete(task)
-
-    // new helpers
-    suspend fun getTaskById(id: Int): Task? = dao.getById(id)
-
-    fun incompleteTasksFlow(): Flow<List<Task>> = dao.getIncompleteTasks()
-
-    fun tasksBetween(fromIso: String, toIso: String): Flow<List<Task>> =
-        dao.getTasksBetweenDates(fromIso, toIso)
-
-    fun flexibleTasksFlow(): Flow<List<Task>> = dao.getFlexibleTasks()
 }

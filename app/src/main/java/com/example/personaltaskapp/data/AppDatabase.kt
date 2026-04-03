@@ -11,7 +11,7 @@ import com.example.personaltaskapp.model.Task
 
 @Database(
     entities = [Task::class, Habit::class, CalendarEvent::class],
-    version = 3,              // 🔥 increase version (important)
+    version = 5,              // 🔥 increase version (important)
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

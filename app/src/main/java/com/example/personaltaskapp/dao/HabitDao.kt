@@ -19,18 +19,7 @@ interface HabitDao {
     @Delete
     suspend fun delete(habit: Habit)
 
-    // Convenience: delete by id (optional)
-    @Query("DELETE FROM habits WHERE id = :id")
-    suspend fun deleteById(id: Int)
-
+    // Helper: fetch a habit by id (useful if UI needs a single habit)
     @Query("SELECT * FROM habits WHERE id = :id LIMIT 1")
     suspend fun getById(id: Int): Habit?
-
-    // example: store daysOfWeek as "MON,TUE" etc. Query by LIKE; for robust you can normalize days into separate table later
-    @Query("SELECT * FROM habits WHERE daysOfWeek LIKE '%' || :day || '%'")
-    fun getHabitsForDay(day: String): Flow<List<Habit>>
-
-    // update streak and lastCompletedIso
-    @Query("UPDATE habits SET streak = :streak, lastCompletedIso = :iso WHERE id = :id")
-    suspend fun updateStreakAndLast(id: Int, streak: Int, iso: String)
 }

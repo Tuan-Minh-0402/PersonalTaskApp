@@ -5,6 +5,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -12,56 +17,64 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.personaltaskapp.data.DatabaseModule
-import com.example.personaltaskapp.repository.*
-import com.example.personaltaskapp.viewmodel.*
+import com.example.personaltaskapp.repository.CalendarRepository
+import com.example.personaltaskapp.repository.HabitRepository
+import com.example.personaltaskapp.repository.TaskRepository
+import com.example.personaltaskapp.viewmodel.CalendarViewModel
+import com.example.personaltaskapp.viewmodel.CalendarViewModelFactory
+import com.example.personaltaskapp.viewmodel.HabitViewModel
+import com.example.personaltaskapp.viewmodel.HabitViewModelFactory
+import com.example.personaltaskapp.viewmodel.PomodoroManager
+import com.example.personaltaskapp.viewmodel.TaskViewModel
+import com.example.personaltaskapp.viewmodel.TaskViewModelFactory
 
+@RequiresApi(Build.VERSION_CODES.O)
 class MainActivity : ComponentActivity() {
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1) get DB
+        // --- Database instance (singleton) ---
         val db = DatabaseModule.getDatabase(this)
 
-        // 2) create repos
+        // --- Repositories ---
         val taskRepo = TaskRepository(db.taskDao())
         val habitRepo = HabitRepository(db.habitDao())
         val calendarRepo = CalendarRepository(db.calendarEventDao())
 
-        // 3) viewmodels via factories
-        val taskViewModel = ViewModelProvider(
+        // --- ViewModels that need factories (constructed here) ---
+        val taskViewModel: TaskViewModel = ViewModelProvider(
             this,
             TaskViewModelFactory(taskRepo)
         ).get(TaskViewModel::class.java)
 
-        val habitViewModel = ViewModelProvider(
+        val habitViewModel: HabitViewModel = ViewModelProvider(
             this,
             HabitViewModelFactory(habitRepo)
         ).get(HabitViewModel::class.java)
 
-        val calendarViewModel = ViewModelProvider(
+        val calendarViewModel: CalendarViewModel = ViewModelProvider(
             this,
-            CalendarViewModelFactory(calendarRepo)
+            CalendarViewModelFactory(calendarRepo, taskRepo, habitRepo)
         ).get(CalendarViewModel::class.java)
 
-        // 4) set compose content and pass them in
+        // --- Compose UI ---
         setContent {
-            // optionally wrap in your theme if you have one
-            MaterialTheme {
-                MainApp(
-                    taskViewModel = taskViewModel,
-                    habitViewModel = habitViewModel,
-                    calendarViewModel = calendarViewModel
-                )
-            }
+            MainApp(
+                taskViewModel = taskViewModel,
+                habitViewModel = habitViewModel,
+                calendarViewModel = calendarViewModel
+            )
         }
     }
 }
+
+
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable

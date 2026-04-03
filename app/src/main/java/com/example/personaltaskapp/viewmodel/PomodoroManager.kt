@@ -1,115 +1,61 @@
 package com.example.personaltaskapp.viewmodel
 
-import androidx.compose.runtime.*
-import androidx.lifecycle.viewModelScope
 import com.example.personaltaskapp.model.PomodoroState
 import com.example.personaltaskapp.model.Task
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 class PomodoroManager(
-    private val viewModel: TaskViewModel   // so it can update tasks
+    private val updateTaskPomodoro: (Task) -> Unit       // <-- callback from ViewModel
 ) {
 
-    var isRunning by mutableStateOf(false)
-        private set
-
-    var state by mutableStateOf(PomodoroState.IDLE)
-        private set
-
-    var secondsLeft by mutableStateOf(0)
-        private set
-
     private var job: Job? = null
-    private var currentTask: Task? = null
-    private var cyclesCompleted = 0
 
-    // ─────────────────────────────────────────────
-    // START POMODORO
-    // ─────────────────────────────────────────────
+    private val _isRunning = MutableStateFlow(false)
+    val isRunning: StateFlow<Boolean> = _isRunning
+
+    private val _secondsLeft = MutableStateFlow(0)
+    val secondsLeft: StateFlow<Int> = _secondsLeft
+
+    private val _state = MutableStateFlow(PomodoroState.IDLE)
+    val state: StateFlow<PomodoroState> = _state
+
+    private var currentTask: Task? = null
+
+
     fun start(task: Task) {
-        if (isRunning) return
+        if (_isRunning.value) return
 
         currentTask = task
-        state = PomodoroState.WORK
-        secondsLeft = 25 * 60
-        isRunning = true
+        _state.value = PomodoroState.WORK
+        _secondsLeft.value = 25 * 60
+        _isRunning.value = true
 
-        runCycle()
-    }
-
-    // ─────────────────────────────────────────────
-    // CANCEL POMODORO
-    // ─────────────────────────────────────────────
-    fun cancel() {
-        job?.cancel()
-        isRunning = false
-        state = PomodoroState.IDLE
-        secondsLeft = 0
-        cyclesCompleted = 0
-        currentTask = null
-    }
-
-    // ─────────────────────────────────────────────
-    // INTERNAL TIMER ENGINE
-    // ─────────────────────────────────────────────
-    private fun runCycle() {
-        job?.cancel()
-
-        job = viewModel.viewModelScope.launch {
-            while (secondsLeft > 0 && isRunning) {
+        job = kotlinx.coroutines.GlobalScope.launch {
+            while (_secondsLeft.value > 0 && _isRunning.value) {
                 delay(1000)
-                secondsLeft--
+                _secondsLeft.value -= 1
             }
 
-            if (!isRunning) return@launch
-
-            when (state) {
-
-                PomodoroState.WORK -> completeWorkSession()
-
-                PomodoroState.SHORT_BREAK -> {
-                    state = PomodoroState.WORK
-                    secondsLeft = 25 * 60
-                    runCycle()
-                }
-
-                PomodoroState.LONG_BREAK -> {
-                    state = PomodoroState.WORK
-                    secondsLeft = 25 * 60
-                    runCycle()
-                }
-
-                else -> {}
-            }
+            if (_isRunning.value) finish()
         }
     }
 
-    // ─────────────────────────────────────────────
-    // ON WORK SESSION COMPLETE
-    // ─────────────────────────────────────────────
-    private fun completeWorkSession() {
-        val task = currentTask ?: return
+    fun cancel() {
+        job?.cancel()
+        _isRunning.value = false
+        _state.value = PomodoroState.IDLE
+    }
 
-        // update pomodoro counter
-        viewModel.updateTask(
-            task.copy(completedPomodoros = task.completedPomodoros + 1)
-        )
+    private fun finish() {
+        val t = currentTask ?: return
+        val updated = t.copy(completedPomodoros = t.completedPomodoros + 1)
+        updateTaskPomodoro(updated)     // <-- ViewModel updates DB
 
-        cyclesCompleted++
-
-        // decide break type
-        state = if (cyclesCompleted % 4 == 0)
-            PomodoroState.LONG_BREAK
-        else
-            PomodoroState.SHORT_BREAK
-
-        secondsLeft = if (state == PomodoroState.LONG_BREAK)
-            15 * 60
-        else
-            5 * 60
-
-        runCycle()
+        _isRunning.value = false
+        _state.value = PomodoroState.IDLE
     }
 }

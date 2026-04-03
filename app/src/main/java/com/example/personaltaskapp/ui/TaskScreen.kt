@@ -5,41 +5,13 @@ import android.content.Context
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.personaltaskapp.model.Task
+import com.example.personaltaskapp.viewmodel.PomodoroManager
 import com.example.personaltaskapp.viewmodel.TaskViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -59,8 +32,6 @@ fun TaskScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-
-    // All tasks
     val allTasks by viewModel.tasks.collectAsState(initial = emptyList())
 
     // Filters
@@ -75,26 +46,30 @@ fun TaskScreen(
     var showPomodoroSelector by rememberSaveable { mutableStateOf(false) }
     var showPomodoroRunning by rememberSaveable { mutableStateOf(false) }
 
-    // Apply filtering
+    // --- Pomodoro state collectors ---
+    val secondsLeft by viewModel.pomodoro.secondsLeft.collectAsState()
+    val pomodoroState by viewModel.pomodoro.state.collectAsState()
+    val isPomodoroRunning by viewModel.pomodoro.isRunning.collectAsState()
+
+
+    // Filtering
     val filteredTasks = remember(allTasks, filterActive, filterDone, filterDueSoon) {
-        if (isAllSelected) return@remember allTasks
+        if (isAllSelected) allTasks else {
+            allTasks.filter { t ->
+                var include = false
 
-        allTasks.filter { task ->
-            var match = false
+                if (filterActive && !t.isCompleted) include = true
+                if (filterDone && t.isCompleted) include = true
 
-            if (filterActive && !task.isCompleted) match = true
-            if (filterDone && task.isCompleted) match = true
-
-            if (filterDueSoon && !task.isCompleted && task.dueDateIso != null) {
-                try {
-                    val due = LocalDate.parse(task.dueDateIso)
-                    if (due >= LocalDate.now() && due <= LocalDate.now().plusDays(7)) {
-                        match = true
+                if (filterDueSoon && !t.isCompleted && t.dueDateIso != null) {
+                    val due = runCatching { LocalDate.parse(t.dueDateIso) }.getOrNull()
+                    if (due != null && due >= LocalDate.now() && due <= LocalDate.now().plusDays(7)) {
+                        include = true
                     }
-                } catch (_: Exception) {}
-            }
+                }
 
-            match
+                include
+            }
         }
     }
 
@@ -111,8 +86,10 @@ fun TaskScreen(
                 ) {
                     Text("🍅", fontSize = 20.sp)
                 }
-                FloatingActionButton(onClick = { showAddDialog = true }) {
-                    Icon(Icons.Default.Add, "Add")
+                FloatingActionButton(
+                    onClick = { showAddDialog = true }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add")
                 }
             }
         }
@@ -125,16 +102,14 @@ fun TaskScreen(
                 .padding(12.dp)
         ) {
 
-            // Filters
+            // ---- Filter buttons ----
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 FilterButton("All", isAllSelected) {
-                    filterActive = false
-                    filterDone = false
-                    filterDueSoon = false
+                    filterActive = false; filterDone = false; filterDueSoon = false
                 }
                 FilterButton("Active", filterActive) { filterActive = !filterActive }
                 FilterButton("Done", filterDone) { filterDone = !filterDone }
@@ -145,7 +120,7 @@ fun TaskScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // Task List
+            // ---- Task list ----
             if (filteredTasks.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No tasks")
@@ -153,15 +128,18 @@ fun TaskScreen(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     filteredTasks.forEach { task ->
-                        TaskRow(task) {
-                            viewModel.updateTask(task.copy(isCompleted = !task.isCompleted))
-                        }
+                        TaskRow(
+                            task = task,
+                            onToggleComplete = {
+                                viewModel.updateTask(task.copy(isCompleted = !task.isCompleted))
+                            }
+                        )
                     }
                 }
             }
         }
 
-        // Add task dialog
+        // ---- Add Task Dialog ----
         if (showAddDialog) {
             AddTaskDialog(
                 context = context,
@@ -173,7 +151,7 @@ fun TaskScreen(
             )
         }
 
-        // Pomodoro task select dialog
+        // ---- Pomodoro Selector ----
         if (showPomodoroSelector) {
             PomodoroTaskSelectorDialog(
                 tasks = allTasks.filter { !it.isCompleted },
@@ -186,11 +164,11 @@ fun TaskScreen(
             )
         }
 
-        // Pomodoro running dialog
-        if (showPomodoroRunning && viewModel.pomodoro.isRunning) {
+// ---- Pomodoro Running ----
+        if (showPomodoroRunning && isPomodoroRunning) {
             PomodoroRunningDialog(
-                secondsLeft = viewModel.pomodoro.secondsLeft,
-                state = viewModel.pomodoro.state,
+                secondsLeft = secondsLeft,
+                state = pomodoroState,
                 onCancel = {
                     viewModel.pomodoro.cancel()
                     showPomodoroRunning = false
@@ -201,7 +179,6 @@ fun TaskScreen(
     }
 }
 
-// Filter button composable
 @Composable
 fun FilterButton(text: String, selected: Boolean, onClick: () -> Unit) {
     Button(
@@ -216,7 +193,6 @@ fun FilterButton(text: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-// Task row
 @Composable
 fun TaskRow(task: Task, onToggleComplete: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
@@ -225,6 +201,7 @@ fun TaskRow(task: Task, onToggleComplete: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
+
                 Text(task.title, style = MaterialTheme.typography.titleMedium)
 
                 if (!task.description.isNullOrEmpty()) {
@@ -238,8 +215,7 @@ fun TaskRow(task: Task, onToggleComplete: () -> Unit) {
                         3 -> "High"
                         2 -> "Medium"
                         else -> "Low"
-                    },
-                    style = MaterialTheme.typography.bodySmall
+                    }
                 )
 
                 task.dueDateIso?.let {
@@ -265,13 +241,14 @@ fun AddTaskDialog(
 ) {
     var title by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
-    var duration by rememberSaveable { mutableStateOf(30) }
+    var estimatedMinutes by rememberSaveable { mutableStateOf(30) }
     var priority by rememberSaveable { mutableStateOf(2) }
     var dueDate by rememberSaveable { mutableStateOf<String?>(null) }
     var isFlexible by rememberSaveable { mutableStateOf(true) }
 
     var showPicker by remember { mutableStateOf(false) }
 
+    // ---- Date Picker ----
     LaunchedEffect(showPicker) {
         if (showPicker) {
             val today = LocalDate.now()
@@ -295,15 +272,18 @@ fun AddTaskDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Task") },
         text = {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
                 OutlinedTextField(title, { title = it }, label = { Text("Title") })
                 OutlinedTextField(description, { description = it }, label = { Text("Description") })
+
                 OutlinedTextField(
-                    duration.toString(),
-                    { it.toIntOrNull()?.let { duration = it } },
-                    label = { Text("Duration (minutes)") }
+                    estimatedMinutes.toString(),
+                    { it.toIntOrNull()?.let { estimatedMinutes = it } },
+                    label = { Text("Estimated minutes") }
                 )
 
+                // Due date row
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -315,19 +295,15 @@ fun AddTaskDialog(
                 }
 
                 Text("Priority:")
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     listOf("High" to 3, "Medium" to 2, "Low" to 1).forEach { (label, value) ->
                         RadioButtonWithLabel(
-                            selected = (priority == value),
+                            selected = priority == value,
                             label = label,
                             onSelect = { priority = value }
                         )
                     }
                 }
-
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(isFlexible, { isFlexible = it })
@@ -339,13 +315,13 @@ fun AddTaskDialog(
             TextButton(onClick = {
                 onSave(
                     Task(
-                        id = 0,
                         title = title,
                         description = description.ifBlank { null },
-                        durationMinutes = duration,
+                        estimatedMinutes = estimatedMinutes,
                         dueDateIso = dueDate,
                         priority = priority,
-                        isFlexible = isFlexible
+                        isFlexible = isFlexible,
+                        pomodoroCount = 4,  // default
                     )
                 )
             }) { Text("Save") }
@@ -360,15 +336,8 @@ private fun RadioButtonWithLabel(
     label: String,
     onSelect: () -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.clickable { onSelect() }
-    ) {
-        RadioButton(
-            selected = selected,
-            onClick = onSelect
-        )
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onSelect() }) {
+        RadioButton(selected = selected, onClick = onSelect)
         Text(label)
     }
 }
-

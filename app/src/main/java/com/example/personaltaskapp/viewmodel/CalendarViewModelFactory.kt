@@ -3,16 +3,20 @@ package com.example.personaltaskapp.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.personaltaskapp.repository.CalendarRepository
+import com.example.personaltaskapp.repository.HabitRepository
+import com.example.personaltaskapp.repository.TaskRepository
 
 class CalendarViewModelFactory(
-    private val repo: CalendarRepository
+    private val calendarRepo: CalendarRepository,
+    private val taskRepo: TaskRepository,
+    private val habitRepo: HabitRepository
 ) : ViewModelProvider.Factory {
 
+    @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(CalendarViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return CalendarViewModel(repo) as T
+            return CalendarViewModel(calendarRepo, taskRepo, habitRepo) as T
         }
-        throw IllegalArgumentException("Unknown ViewModel class")
+        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }
 }

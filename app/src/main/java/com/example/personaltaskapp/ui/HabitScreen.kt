@@ -1,143 +1,276 @@
 package com.example.personaltaskapp.ui
 
+import android.app.TimePickerDialog
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.personaltaskapp.model.Habit
 import com.example.personaltaskapp.viewmodel.HabitViewModel
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
-
-
-
-@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
-
-fun HabitScreen(habitViewModel: HabitViewModel) {
-    val habits by habitViewModel.habits.collectAsState()
-
-    var showDialog by remember { mutableStateOf(false) }
+fun HabitScreen(viewModel: HabitViewModel) {
+    val habits by viewModel.habits.collectAsState(initial = emptyList())
+    var showAddDialog by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = { CenterAlignedTopAppBar(title = { Text("💪 Habit Tracker") }) },
+        topBar = { TopAppBar(title = { Text("Habit Tracker") }) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showDialog = true }) {
-                Text("+")
+            FloatingActionButton(onClick = { showAddDialog = true }) {
+                Icon(Icons.Default.Add, contentDescription = "Add Habit")
             }
         }
-    ) { padding ->
-        Column(modifier = Modifier.padding(padding).padding(16.dp)) {
+    ) { innerPadding ->
+        Column(
+            Modifier
+                .padding(innerPadding)
+                .padding(16.dp)
+        ) {
             if (habits.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No habits yet. Tap + to add one.")
+                    Text("No habits yet")
                 }
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(habits, key = { it.id }) { habit ->
-                        HabitItemCard(habit, onDelete = { habitViewModel.deleteHabit(habit) })
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    habits.forEach { habit ->
+                        HabitItem(
+                            habit = habit,
+                            onDelete = { viewModel.deleteHabit(habit) }
+                        )
                     }
                 }
             }
         }
+    }
 
-        if (showDialog) {
-            AddHabitDialog(onDismiss = { showDialog = false }) { newHabit ->
-                habitViewModel.addHabit(newHabit)
-                showDialog = false
+    if (showAddDialog) {
+        AddHabitDialog(
+            onDismiss = { showAddDialog = false },
+            onSave = { newHabit ->
+                viewModel.addHabit(newHabit)
+                showAddDialog = false
             }
-        }
+        )
     }
 }
 
 @Composable
-fun HabitItemCard(habit: Habit, onDelete: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(habit.title, style = MaterialTheme.typography.titleMedium)
-                habit.description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                Text("Days: ${habit.daysOfWeek ?: habit.frequency}", style = MaterialTheme.typography.labelSmall)
-                habit.startTimeIso?.let {
-                    // show the last 8 chars (HH:mm:ss) or parse if you prefer
-                    Text("Start: ${it.takeLast(8)}", style = MaterialTheme.typography.labelSmall)
-                }
-                Text("Duration: ${habit.durationMinutes} min", style = MaterialTheme.typography.labelSmall)
-                Text("Streak: ${habit.streak}", style = MaterialTheme.typography.labelSmall)
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete habit")
+fun HabitItem(habit: Habit, onDelete: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                habit.title,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(Modifier.height(6.dp))
+
+            Text("Days: ${habit.frequency}")
+
+            Text("Start: ${formatMinutes(habit.startMinutes)}")
+            Text("Duration: ${habit.durationMinutes} min")
+            Text("Streak: ${habit.streak}")
+
+            Spacer(Modifier.height(6.dp))
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(
+                    text = "Delete",
+                    color = Color.Red,
+                    modifier = Modifier.clickable { onDelete() }
+                )
             }
         }
     }
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddHabitDialog(onDismiss: () -> Unit, onAdd: (Habit) -> Unit) {
+fun AddHabitDialog(
+    onDismiss: () -> Unit,
+    onSave: (Habit) -> Unit
+) {
     var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var startTimeText by remember { mutableStateOf("07:00") }
-    var durationText by remember { mutableStateOf("30") }
-    var daysOfWeek by remember { mutableStateOf("MON,WED,FRI") }
-    var frequency by remember { mutableStateOf("WEEKLY") }
 
-    val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    // Frequency selection
+    val freqOptions = listOf("Daily", "Weekdays", "Weekends", "Custom")
+    var selectedFreq by remember { mutableStateOf(freqOptions.first()) }
+
+    // Custom days
+    val customDays = remember {
+        mutableStateListOf(false, false, false, false, false, false, false)
+    }
+    val weekdays = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+    // Time Picker
+    val context = LocalContext.current
+    var startMinutes by remember { mutableStateOf(8 * 60) } // default 08:00
+    val timePicker = TimePickerDialog(
+        context,
+        { _, hour, minute -> startMinutes = hour * 60 + minute },
+        startMinutes / 60,
+        startMinutes % 60,
+        true
+    )
+
+    var duration by remember { mutableStateOf(30) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = {
-            Button(onClick = {
-                if (title.isNotBlank()) {
-                    val startTimeIso = "2025-11-03T" + LocalTime.parse(startTimeText, timeFormatter).toString()
-                    onAdd(
-                        Habit(
-                            title = title,
-                            description = description.ifBlank { null },
-                            startTimeIso = startTimeIso,
-                            durationMinutes = durationText.toIntOrNull() ?: 30,
-                            daysOfWeek = daysOfWeek.ifBlank { null },
-                            frequency = frequency,
-                            streak = 0,
-                            lastCompletedIso = null
-                        )
-                    )
-                }
-            }) { Text("Add") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         title = { Text("Add Habit") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") })
-                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description (optional)") })
-                OutlinedTextField(value = startTimeText, onValueChange = { startTimeText = it }, label = { Text("Start Time (HH:mm)") })
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    value = durationText,
-                    onValueChange = { durationText = it.filter(Char::isDigit) },
-                    label = { Text("Duration (minutes)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Habit name") }
                 )
-                OutlinedTextField(value = daysOfWeek, onValueChange = { daysOfWeek = it }, label = { Text("Days (e.g. MON,WED,FRI)") })
-                OutlinedTextField(value = frequency, onValueChange = { frequency = it }, label = { Text("Frequency (DAILY/WEEKLY)") })
+
+                // Frequency dropdown
+                FrequencyDropdown(
+                    selected = selectedFreq,
+                    onSelected = { selectedFreq = it },
+                    options = freqOptions
+                )
+
+                // Custom expandable section
+                if (selectedFreq == "Custom") {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF1F1F1), RoundedCornerShape(8.dp))
+                            .padding(8.dp)
+                    ) {
+                        Text("Select days:", fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(4.dp))
+
+                        weekdays.forEachIndexed { i, day ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        customDays[i] = !customDays[i]
+                                    },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = customDays[i],
+                                    onCheckedChange = { customDays[i] = it }
+                                )
+                                Text(day)
+                            }
+                        }
+                    }
+                }
+
+                // Time selector
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { timePicker.show() },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Start Time")
+                    Text(formatMinutes(startMinutes), fontWeight = FontWeight.Bold)
+                }
+
+                // Duration
+                OutlinedTextField(
+                    value = duration.toString(),
+                    onValueChange = { it.toIntOrNull()?.let { d -> duration = d } },
+                    label = { Text("Duration (min)") }
+                )
             }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val freq = when (selectedFreq) {
+                    "Daily" -> "DAILY"
+                    "Weekdays" -> "MON,TUE,WED,THU,FRI"
+                    "Weekends" -> "SAT,SUN"
+                    else -> weekdays
+                        .filterIndexed { i, _ -> customDays[i] }
+                        .joinToString(",")
+                }
+
+                onSave(
+                    Habit(
+                        title = title,
+                        frequency = freq,
+                        startMinutes = startMinutes,
+                        durationMinutes = duration,
+                        streak = 0
+                    )
+                )
+            }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+@Composable
+fun FrequencyDropdown(
+    selected: String,
+    onSelected: (String) -> Unit,
+    options: List<String>
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { expanded = true }
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(selected)
+            Icon(Icons.Default.Add, contentDescription = null)
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { opt ->
+                DropdownMenuItem(
+                    text = { Text(opt) },
+                    onClick = {
+                        onSelected(opt)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+fun formatMinutes(min: Int): String {
+    val h = min / 60
+    val m = min % 60
+    return "%02d:%02d".format(h, m)
 }

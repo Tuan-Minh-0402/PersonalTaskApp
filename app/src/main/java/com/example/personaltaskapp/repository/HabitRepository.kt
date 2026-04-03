@@ -6,7 +6,11 @@ import kotlinx.coroutines.flow.Flow
 
 class HabitRepository(private val dao: HabitDao) {
 
-    val habits: Flow<List<Habit>> = dao.getAllHabits()
+    // Flow of all habits (single source of truth)
+    fun getAllHabits(): Flow<List<Habit>> = dao.getAllHabits()
+
+    // Convenience property if you prefer a property name
+    val habits: Flow<List<Habit>> get() = getAllHabits()
 
     suspend fun addHabit(habit: Habit) = dao.insert(habit)
 
@@ -14,12 +18,5 @@ class HabitRepository(private val dao: HabitDao) {
 
     suspend fun deleteHabit(habit: Habit) = dao.delete(habit)
 
-    // new helpers
     suspend fun getHabitById(id: Int): Habit? = dao.getById(id)
-
-    // day example: "MON", "TUE", etc
-    fun habitsForDay(day: String): Flow<List<Habit>> = dao.getHabitsForDay(day)
-
-    suspend fun updateStreakAndLast(id: Int, streak: Int, iso: String) =
-        dao.updateStreakAndLast(id, streak, iso)
 }

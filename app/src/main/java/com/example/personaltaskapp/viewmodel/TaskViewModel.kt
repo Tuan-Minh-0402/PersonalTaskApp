@@ -12,14 +12,18 @@ class TaskViewModel(
     private val repo: TaskRepository
 ) : ViewModel() {
 
-    val tasks = repo.tasks
-        .stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(5000),
-            emptyList()
-        )
+    val tasks = repo.tasks.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        emptyList()
+    )
 
-    val pomodoro = PomodoroManager(this)
+    // ---- Pomodoro ----
+    val pomodoro = PomodoroManager { updatedTask ->
+        viewModelScope.launch {
+            repo.updateTask(updatedTask)
+        }
+    }
 
     fun addTask(task: Task) {
         viewModelScope.launch { repo.addTask(task) }

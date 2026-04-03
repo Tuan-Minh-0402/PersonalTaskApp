@@ -6,8 +6,7 @@ import com.example.personaltaskapp.data.AppDatabase
 
 object DatabaseModule {
 
-    @Volatile
-    private var INSTANCE: AppDatabase? = null
+    @Volatile private var INSTANCE: AppDatabase? = null
 
     fun getDatabase(context: Context): AppDatabase {
         return INSTANCE ?: synchronized(this) {
@@ -16,7 +15,7 @@ object DatabaseModule {
                 AppDatabase::class.java,
                 "personal_task_app_db"
             )
-                .fallbackToDestructiveMigration()   // 🟣 FIX: always rebuilds DB on schema change
+                .fallbackToDestructiveMigration()
                 .build()
                 .also { INSTANCE = it }
         }
