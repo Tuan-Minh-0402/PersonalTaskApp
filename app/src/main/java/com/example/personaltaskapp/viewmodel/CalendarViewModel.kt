@@ -10,6 +10,8 @@ import com.example.personaltaskapp.model.Task
 import com.example.personaltaskapp.repository.CalendarRepository
 import com.example.personaltaskapp.repository.HabitRepository
 import com.example.personaltaskapp.repository.TaskRepository
+import com.example.personaltaskapp.scheduler.SmartScheduleInput
+import com.example.personaltaskapp.scheduler.SmartScheduler
 import com.example.personaltaskapp.scheduler.SmartSuggestion
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -63,12 +65,11 @@ class   CalendarViewModel(
         val dow3 = date.dayOfWeek.name.take(3).uppercase() // "MON"
         return allHabits.value.filter { h ->
             val freq = h.frequency.uppercase()
-            val days = h.daysOfWeek.uppercase()
 
             freq == "DAILY" ||
                     (freq == "WEEKDAYS" && dow3 in listOf("MON","TUE","WED","THU","FRI")) ||
                     (freq == "WEEKENDS" && dow3 in listOf("SAT","SUN")) ||
-                    (days.isNotBlank() && days.split(",").map { it.trim() }.contains(dow3))
+                    (freq.isNotBlank() && freq.split(",").map { it.trim() }.contains(dow3))
         }
     }
 
@@ -76,11 +77,13 @@ class   CalendarViewModel(
     // SMART SUGGESTIONS
     // ------------------------
     fun smartSuggestions(date: LocalDate): List<SmartSuggestion> {
-        return SmartSuggestion.compute(
-            date,
-            allTasks.value,
-            allHabits.value,
-            allEvents.value
+        return SmartScheduler.generateSuggestions(
+            SmartScheduleInput(
+                tasks = allTasks.value,
+                habits = allHabits.value,
+                events = allEvents.value,
+                targetDate = date
+            )
         )
     }
 
@@ -91,7 +94,7 @@ class   CalendarViewModel(
         viewModelScope.launch {
 
             // If suggestion represents a TASK
-            if (s.taskId != null) {
+            if (s.taskId > 0) {
                 val task = allTasks.value.find { it.id == s.taskId }
                 if (task != null) {
                     val updated = task.copy(
@@ -102,14 +105,17 @@ class   CalendarViewModel(
             }
 
             // If suggestion represents a HABIT → create event
-            if (s.habitId != null) {
-                val habit = allHabits.value.find { it.id == s.habitId }
+            if (s.taskId < 0) {
+                val habitId = -s.taskId
+                val habit = allHabits.value.find { it.id == habitId }
                 if (habit != null) {
+                    val hour = habit.startMinutes / 60
+                    val minute = habit.startMinutes % 60
                     val evt = CalendarEvent(
                         title = habit.title,
                         description = "Auto-scheduled habit",
                         dateIso = date.toString(),
-                        startTimeIso = SmartSuggestion.minutesToTime(habit.startMinutes),
+                        startTimeIso = "%02d:%02d".format(hour, minute),
                         type = "HABIT"
                     )
                     calendarRepo.insertEvent(evt)
