@@ -1,6 +1,7 @@
 package com.example.personaltaskapp.ui
 
 import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.content.Context
 import android.os.Build
 import androidx.annotation.RequiresApi
@@ -245,8 +246,10 @@ fun AddTaskDialog(
     var priority by rememberSaveable { mutableStateOf(2) }
     var dueDate by rememberSaveable { mutableStateOf<String?>(null) }
     var isFlexible by rememberSaveable { mutableStateOf(true) }
+    var selectedTime by rememberSaveable { mutableStateOf<String?>(null) }
 
     var showPicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
 
     // ---- Date Picker ----
     LaunchedEffect(showPicker) {
@@ -266,6 +269,31 @@ fun AddTaskDialog(
                 show()
             }
         }
+    }
+
+    // ---- Time Picker ----
+    LaunchedEffect(showTimePicker) {
+        if (showTimePicker) {
+            val initialHour = selectedTime?.substring(0, 2)?.toIntOrNull() ?: 8
+            val initialMinute = selectedTime?.substring(3, 5)?.toIntOrNull() ?: 0
+            TimePickerDialog(
+                context,
+                { _, hour, minute ->
+                    selectedTime = "%02d:%02d".format(hour, minute)
+                },
+                initialHour,
+                initialMinute,
+                true
+            ).apply {
+                setOnDismissListener { showTimePicker = false }
+                show()
+            }
+        }
+    }
+
+    // If flexible scheduling is ON, time must not be saved.
+    LaunchedEffect(isFlexible) {
+        if (isFlexible) selectedTime = null
     }
 
     AlertDialog(
@@ -309,10 +337,34 @@ fun AddTaskDialog(
                     Checkbox(isFlexible, { isFlexible = it })
                     Text("Flexible scheduling")
                 }
+
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (isFlexible) Modifier
+                            else Modifier.clickable { showTimePicker = true }
+                        )
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = if (isFlexible) "Time (disabled when flexible)"
+                        else (selectedTime ?: "Time"),
+                        modifier = Modifier.weight(1f),
+                        color = if (isFlexible) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                    Icon(Icons.Default.Add, contentDescription = null)
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = {
+                val fixedStartIso = if (!isFlexible && !selectedTime.isNullOrBlank() && !dueDate.isNullOrBlank()) {
+                    "${dueDate}T$selectedTime"
+                } else {
+                    null
+                }
                 onSave(
                     Task(
                         title = title,
@@ -321,6 +373,7 @@ fun AddTaskDialog(
                         dueDateIso = dueDate,
                         priority = priority,
                         isFlexible = isFlexible,
+                        fixedStartIso = fixedStartIso,
                         pomodoroCount = 4,  // default
                     )
                 )

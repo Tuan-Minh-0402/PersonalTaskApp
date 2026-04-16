@@ -5,21 +5,55 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.personaltaskapp.model.CalendarEvent
@@ -28,9 +62,10 @@ import com.example.personaltaskapp.model.Task
 import com.example.personaltaskapp.scheduler.SmartSuggestion
 import com.example.personaltaskapp.viewmodel.CalendarViewModel
 import java.time.LocalDate
+import java.time.format.DateTimeParseException
 import java.time.YearMonth
 import java.time.format.TextStyle
-import java.util.*
+import java.util.Locale
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,7 +85,10 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     val allEvents by viewModel.allEvents.collectAsState()
 
     // Always re-evaluate based on selected date
-    val tasksForDate = viewModel.tasksFor(selectedDate)
+    val tasksByDate = remember(allTasks) {
+        allTasks.groupBy { task -> taskDate(task) }.filterKeys { it != null }.mapKeys { it.key!! }
+    }
+    val tasksForDate = tasksByDate[selectedDate].orEmpty()
     val habitsForDate = viewModel.habitsFor(selectedDate)
     val eventsForDate = viewModel.eventsFor(selectedDate)
     val suggestionsForDate = viewModel.smartSuggestions(selectedDate)
@@ -76,8 +114,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 }
 
                 Text(
-                    text = currentMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault())
-                            + " " + currentMonth.year,
+                    text = currentMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault()) +
+                            " " + currentMonth.year,
                     style = MaterialTheme.typography.headlineSmall
                 )
 
@@ -92,7 +130,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
             // WEEKDAY HEADER (Mon-Sun)
             // --------------------------------
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                listOf("Mon","Tue","Wed","Thu","Fri","Sat","Sun").forEach {
+                listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEach {
                     Text(
                         text = it,
                         modifier = Modifier.weight(1f),
@@ -114,19 +152,11 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     selectedDate = it
                     showSheet = true
                 },
+                tasksByDate = tasksByDate,
                 viewModel = viewModel
             )
         }
 
-        // ADD EVENT BUTTON
-        FloatingActionButton(
-            onClick = { showAddEventDialog = true },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(20.dp)
-        ) {
-            Icon(Icons.Default.Add, contentDescription = "Add event")
-        }
     }
 
     // --------------------------------
@@ -143,6 +173,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 tasks = tasksForDate,
                 habits = habitsForDate,
                 suggestions = suggestionsForDate,
+                onAddEvent = { showAddEventDialog = true },
                 onApplySuggestion = { suggestion ->
                     viewModel.applySmartSuggestion(suggestion, selectedDate)
                 }
@@ -171,6 +202,7 @@ fun CalendarMonthGrid(
     month: YearMonth,
     selectedDate: LocalDate,
     onSelect: (LocalDate) -> Unit,
+    tasksByDate: Map<LocalDate, List<Task>>,
     viewModel: CalendarViewModel
 ) {
     val firstDay = month.atDay(1)
@@ -198,7 +230,7 @@ fun CalendarMonthGrid(
             }
 
             val events = viewModel.eventsFor(date)
-            val tasks = viewModel.tasksFor(date)
+            val tasks = tasksByDate[date].orEmpty()
             val habits = viewModel.habitsFor(date)
 
             val isSelected = date == selectedDate
@@ -268,68 +300,221 @@ fun CalendarBottomSheetContent(
     tasks: List<Task>,
     habits: List<Habit>,
     suggestions: List<SmartSuggestion>,
+    onAddEvent: () -> Unit,
     onApplySuggestion: (SmartSuggestion) -> Unit
 ) {
-    Column(Modifier.padding(16.dp)) {
+    val visibleSuggestions = if (date >= LocalDate.now()) suggestions else emptyList()
+    val dateText = "${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${date.dayOfMonth}"
+    val summaryText = "${tasks.size} Tasks • ${habits.size} Habits • ${visibleSuggestions.size} Suggestions"
 
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 24.dp)
+    ) {
+        Text(text = dateText, style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Details for ${date.dayOfMonth}-${date.monthValue}-${date.year}",
-            style = MaterialTheme.typography.titleMedium
+            text = summaryText,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-
-        Spacer(Modifier.height(10.dp))
-
-        if (events.isNotEmpty()) {
-            Text("Events:", style = MaterialTheme.typography.titleSmall)
-            events.forEach { Text("• ${it.title}") }
-            Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
+        Button(onClick = onAddEvent) {
+            Text("Add Event")
         }
 
-        if (tasks.isNotEmpty()) {
-            Text("Tasks:", style = MaterialTheme.typography.titleSmall)
-            tasks.forEach { Text("• ${it.title}") }
-            Spacer(Modifier.height(8.dp))
-        }
+        Spacer(Modifier.height(16.dp))
+        Divider()
+        Spacer(Modifier.height(16.dp))
 
-        if (habits.isNotEmpty()) {
-            Text("Habits:", style = MaterialTheme.typography.titleSmall)
-            habits.forEach { Text("• ${it.title}") }
-            Spacer(Modifier.height(8.dp))
-        }
-
-        if (date >= LocalDate.now() && suggestions.isNotEmpty()) {
-            Text("Suggestions:", style = MaterialTheme.typography.titleSmall, color = Color.Blue)
-
-            suggestions.forEach { s ->
+        Text(text = "Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        if (tasks.isEmpty()) {
+            Text("No tasks for this day", style = MaterialTheme.typography.bodyMedium)
+        } else {
+            tasks.forEach { task ->
+                val taskTime = extractTaskTime(task)
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Default.Lightbulb,
-                        contentDescription = null,
-                        tint = Color(0xFF1E88E5)
+                    Checkbox(
+                        checked = task.isCompleted,
+                        onCheckedChange = { /* placeholder - connect to ViewModel later */ }
                     )
-                    Spacer(Modifier.width(8.dp))
-
-                    Column(Modifier.weight(1f)) {
-                        Text(s.title, style = MaterialTheme.typography.bodyMedium)
-                        Text("(recommended)", style = MaterialTheme.typography.bodySmall)
-                    }
-
-                    Button(
-                        onClick = { onApplySuggestion(s) },
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Text("Apply")
-                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "$taskTime ${task.title}",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
                 }
+                Spacer(Modifier.height(4.dp))
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
+
+        Text(text = "Habits", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        if (habits.isEmpty()) {
+            Text("No habits for this day", style = MaterialTheme.typography.bodyMedium)
+        } else {
+            habits.forEach { habit ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Repeat,
+                                contentDescription = "Habit",
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            val durationSuffix = if (habit.durationMinutes > 0) {
+                                " (${habit.durationMinutes}m)"
+                            } else {
+                                ""
+                            }
+                            Text(
+                                text = "${formatMinutesAsTime(habit.startMinutes)} ${habit.title}$durationSuffix",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "🔥 Streak: 0",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Events",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(8.dp))
+        if (events.isEmpty()) {
+            Text("No events for this day", style = MaterialTheme.typography.bodyMedium)
+        } else {
+            events.forEach { event ->
+                val eventTime = extractTimeFromText(event.startTimeIso) ?: "--:--"
+                Text(
+                    text = "• $eventTime ${event.title}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            text = "AI Suggestions",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(8.dp))
+        if (visibleSuggestions.isEmpty()) {
+            Text("No suggestions for this day", style = MaterialTheme.typography.bodyMedium)
+        } else {
+            visibleSuggestions.forEach { suggestion ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Lightbulb,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            val suggestedTime = extractTimeFromText(suggestion.reason)
+                            val titleWithTime = if (suggestedTime == null) {
+                                "✨ ${suggestion.title}"
+                            } else {
+                                "✨ ${suggestion.title} ($suggestedTime)"
+                            }
+                            Text(
+                                text = titleWithTime,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        if (suggestion.reason.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = "Because: ${suggestion.reason}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Confidence: ${"%.1f".format(Locale.US, suggestion.confidence)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = { onApplySuggestion(suggestion) }) {
+                            Text("Apply")
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+private fun extractTaskTime(task: Task): String {
+    return extractTimeFromText(task.fixedStartIso)
+        ?: extractTimeFromText(task.earliestStartIso)
+        ?: "--:--"
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+private fun taskDate(task: Task): LocalDate? {
+    return parseIsoDate(task.fixedStartIso)
+        ?: parseIsoDate(task.earliestStartIso)
+        ?: parseIsoDate(task.dueDateIso)
+}
+
+private fun formatMinutesAsTime(totalMinutes: Int): String {
+    if (totalMinutes < 0) return "--:--"
+    val hour = (totalMinutes / 60).coerceAtLeast(0)
+    val minute = (totalMinutes % 60).coerceAtLeast(0)
+    return "%02d:%02d".format(hour, minute)
+}
+
+private fun extractTimeFromText(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    val match = Regex("(\\d{2}:\\d{2})").find(raw)
+    return match?.groupValues?.get(1)
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+private fun parseIsoDate(raw: String?): LocalDate? {
+    if (raw.isNullOrBlank()) return null
+    val datePart = raw.trim().take(10)
+    return try {
+        LocalDate.parse(datePart)
+    } catch (_: DateTimeParseException) {
+        null
     }
 }
 
