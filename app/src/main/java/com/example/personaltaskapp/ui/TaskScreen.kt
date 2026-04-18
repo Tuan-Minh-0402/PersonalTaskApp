@@ -242,7 +242,7 @@ fun AddTaskDialog(
 ) {
     var title by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
-    var estimatedMinutes by rememberSaveable { mutableStateOf(30) }
+    var durationInput by rememberSaveable { mutableStateOf("30") }
     var priority by rememberSaveable { mutableStateOf(2) }
     var dueDate by rememberSaveable { mutableStateOf<String?>(null) }
     var isFlexible by rememberSaveable { mutableStateOf(true) }
@@ -296,19 +296,34 @@ fun AddTaskDialog(
         if (isFlexible) selectedTime = null
     }
 
+    val durationMinutes = durationInput.toIntOrNull() ?: 0
+
     AlertDialog(
+        modifier = Modifier.fillMaxWidth(0.95f),
         onDismissRequest = onDismiss,
         title = { Text("Add Task") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 
-                OutlinedTextField(title, { title = it }, label = { Text("Title") })
-                OutlinedTextField(description, { description = it }, label = { Text("Description") })
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Title") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description") },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 OutlinedTextField(
-                    estimatedMinutes.toString(),
-                    { it.toIntOrNull()?.let { estimatedMinutes = it } },
-                    label = { Text("Estimated minutes") }
+                    value = durationInput,
+                    onValueChange = { durationInput = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("Duration (minutes)") },
+                    isError = durationInput.isNotBlank() && durationMinutes <= 0,
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 // Due date row
@@ -323,12 +338,16 @@ fun AddTaskDialog(
                 }
 
                 Text("Priority:")
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     listOf("High" to 3, "Medium" to 2, "Low" to 1).forEach { (label, value) ->
                         RadioButtonWithLabel(
                             selected = priority == value,
                             label = label,
-                            onSelect = { priority = value }
+                            onSelect = { priority = value },
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
@@ -360,6 +379,8 @@ fun AddTaskDialog(
         },
         confirmButton = {
             TextButton(onClick = {
+                if (title.isBlank() || durationMinutes <= 0) return@TextButton
+
                 val fixedStartIso = if (!isFlexible && !selectedTime.isNullOrBlank() && !dueDate.isNullOrBlank()) {
                     "${dueDate}T$selectedTime"
                 } else {
@@ -369,7 +390,7 @@ fun AddTaskDialog(
                     Task(
                         title = title,
                         description = description.ifBlank { null },
-                        estimatedMinutes = estimatedMinutes,
+                        estimatedMinutes = durationMinutes,
                         dueDateIso = dueDate,
                         priority = priority,
                         isFlexible = isFlexible,
@@ -387,10 +408,14 @@ fun AddTaskDialog(
 private fun RadioButtonWithLabel(
     selected: Boolean,
     label: String,
-    onSelect: () -> Unit
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onSelect() }) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.clickable { onSelect() }
+    ) {
         RadioButton(selected = selected, onClick = onSelect)
-        Text(label)
+        Text(label, maxLines = 1)
     }
 }

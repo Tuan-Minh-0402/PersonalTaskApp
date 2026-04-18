@@ -91,7 +91,10 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     val tasksForDate = tasksByDate[selectedDate].orEmpty()
     val habitsForDate = viewModel.habitsFor(selectedDate)
     val eventsForDate = viewModel.eventsFor(selectedDate)
-    val suggestionsForDate = viewModel.smartSuggestions(selectedDate)
+    val rawSuggestionsForDate = viewModel.smartSuggestions(selectedDate)
+    val suggestionItemsForDate = rawSuggestionsForDate.map { suggestion ->
+        suggestion.toUiSuggestion(allTasks)
+    }
 
     Box(Modifier.fillMaxSize()) {
 
@@ -172,10 +175,13 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 events = eventsForDate,
                 tasks = tasksForDate,
                 habits = habitsForDate,
-                suggestions = suggestionsForDate,
+                suggestions = suggestionItemsForDate,
                 onAddEvent = { showAddEventDialog = true },
-                onApplySuggestion = { suggestion ->
-                    viewModel.applySmartSuggestion(suggestion, selectedDate)
+                onApplySuggestion = { suggestionItem ->
+                    val originalSuggestion = rawSuggestionsForDate.firstOrNull { it.taskId == suggestionItem.taskId }
+                    if (originalSuggestion != null) {
+                        viewModel.applySmartSuggestion(originalSuggestion, selectedDate)
+                    }
                 }
             )
         }
@@ -299,9 +305,9 @@ fun CalendarBottomSheetContent(
     events: List<CalendarEvent>,
     tasks: List<Task>,
     habits: List<Habit>,
-    suggestions: List<SmartSuggestion>,
+    suggestions: List<CalendarSuggestionUi>,
     onAddEvent: () -> Unit,
-    onApplySuggestion: (SmartSuggestion) -> Unit
+    onApplySuggestion: (CalendarSuggestionUi) -> Unit
 ) {
     val visibleSuggestions = if (date >= LocalDate.now()) suggestions else emptyList()
     val dateText = "${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${date.dayOfMonth}"
@@ -441,7 +447,7 @@ fun CalendarBottomSheetContent(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                             Spacer(Modifier.width(8.dp))
-                            val suggestedTime = extractTimeFromText(suggestion.reason)
+                            val suggestedTime = extractTimeFromText(suggestion.displayReason)
                             val titleWithTime = if (suggestedTime == null) {
                                 "✨ ${suggestion.title}"
                             } else {
@@ -454,20 +460,13 @@ fun CalendarBottomSheetContent(
                             )
                         }
 
-                        if (suggestion.reason.isNotBlank()) {
+                        if (suggestion.displayReason.isNotBlank()) {
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                text = "Because: ${suggestion.reason}",
+                                text = "Because: ${suggestion.displayReason}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
-
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Confidence: ${"%.1f".format(Locale.US, suggestion.confidence)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
 
                         Spacer(Modifier.height(8.dp))
                         Button(onClick = { onApplySuggestion(suggestion) }) {
@@ -479,6 +478,23 @@ fun CalendarBottomSheetContent(
             }
         }
     }
+}
+
+data class CalendarSuggestionUi(
+    val taskId: Int,
+    val title: String,
+    val displayReason: String
+)
+
+private fun SmartSuggestion.toUiSuggestion(tasks: List<Task>): CalendarSuggestionUi {
+    val fallbackTitle = tasks.firstOrNull { it.id == taskId }?.title ?: "Task #$taskId"
+    val uiTitle = if (title.isBlank()) fallbackTitle else title
+
+    return CalendarSuggestionUi(
+        taskId = taskId,
+        title = uiTitle,
+        displayReason = reason
+    )
 }
 
 private fun extractTaskTime(task: Task): String {

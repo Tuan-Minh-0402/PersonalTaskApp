@@ -1,82 +1,253 @@
 package com.example.personaltaskapp.scheduler
 
-import android.os.Build
-import androidx.annotation.RequiresApi
+import com.example.personaltaskapp.model.CalendarEvent
+import com.example.personaltaskapp.model.Habit
+import com.example.personaltaskapp.model.Task
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 /**
- * Input structure for generating smart suggestions.
+ * Legacy suggestion API (used by current UI) + MVP day scheduler API.
  */
-
 object SmartScheduler {
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    fun generateSuggestions(input: SmartScheduleInput): List<SmartSuggestion> {
-        val today = LocalDate.now()
-        val date = input.targetDate
+    /**
+     * MVP heuristic scheduler (single-day, deterministic).
+     */
+    fun scheduleDay(input: SmartSchedulerInput): SmartSchedulerResult {
+        val referenceDate = input.selectedDate
+        val dayStart = referenceDate.atStartOfDay()
+        val dayEndExclusive = referenceDate.plusDays(1).atStartOfDay()
 
-        // ❌ No suggestions for past days
-        if (date.isBefore(today)) return emptyList()
+        val unscheduled = mutableListOf<UnscheduledTask>()
+        val validTasks = mutableListOf<SmartSchedulerTask>()
 
-        val keyIso = date.toString()
+        input.tasks
+            .asSequence()
+            .filter { !it.isCompleted }
+            .forEach { task ->
+                if (task.durationMinutes <= 0) {
+                    unscheduled += UnscheduledTask(task.id, UnscheduledReason.INVALID_DURATION)
+                } else {
+                    validTasks += task
+                }
+            }
 
-        val suggestions = mutableListOf<SmartSuggestion>()
+        val mergedBusyBlocks = mergeBusyBlocks(
+            blocks = input.habitBlocks + input.eventBlocks,
+            dayStart = dayStart,
+            dayEndExclusive = dayEndExclusive
+        )
 
-        // ----------------------------------------------
-        // 1) Suggest UNSCHEDULED FLEXIBLE TASKS
-        // ----------------------------------------------
-        val unscheduled = input.tasks.filter { t ->
-            t.isFlexible &&
-                    t.fixedStartIso == null &&
-                    (t.dueDateIso == null || !LocalDate.parse(t.dueDateIso).isBefore(date))
+        val freeBlocks = buildFreeBlocks(
+            mergedBusyBlocks = mergedBusyBlocks,
+            dayStart = dayStart,
+            dayEndExclusive = dayEndExclusive
+        ).toMutableList()
+
+        val sortedTasks = validTasks
+            .map { task -> ScoredTask(task = task, score = scoreTask(task, referenceDate)) }
+            .sortedWith(
+                compareByDescending<ScoredTask> { it.score }
+                    .thenBy { it.task.deadline == null }
+                    .thenBy { deadlineSortKey(it.task.deadline) }
+                    .thenByDescending { it.task.priority }
+                    .thenBy { it.task.durationMinutes }
+                    .thenBy { it.task.id }
+            )
+
+        val scheduled = mutableListOf<ScheduledTaskBlock>()
+
+        sortedTasks.forEach { scoredTask ->
+            val task = scoredTask.task
+            val freeIndex = freeBlocks.indexOfFirst { freeBlock ->
+                minutesBetween(freeBlock.start, freeBlock.end) >= task.durationMinutes
+            }
+
+            if (freeIndex == -1) {
+                unscheduled += UnscheduledTask(task.id, UnscheduledReason.NO_SLOT)
+                return@forEach
+            }
+
+            val chosenBlock = freeBlocks[freeIndex]
+            val scheduledStart = chosenBlock.start
+            val scheduledEnd = scheduledStart.plusMinutes(task.durationMinutes.toLong())
+
+            scheduled += ScheduledTaskBlock(
+                taskId = task.id,
+                start = scheduledStart,
+                end = scheduledEnd
+            )
+
+            if (scheduledEnd == chosenBlock.end) {
+                freeBlocks.removeAt(freeIndex)
+            } else {
+                freeBlocks[freeIndex] = TimeBlock(start = scheduledEnd, end = chosenBlock.end)
+            }
         }
 
-        unscheduled.forEach { t ->
+        return SmartSchedulerResult(
+            scheduled = scheduled,
+            unscheduled = unscheduled
+        )
+    }
+
+    fun mergeBusyBlocks(
+        blocks: List<SmartSchedulerBusyBlock>,
+        dayStart: LocalDateTime,
+        dayEndExclusive: LocalDateTime
+    ): List<TimeBlock> {
+        if (blocks.isEmpty()) return emptyList()
+
+        val clipped = blocks
+            .mapNotNull { block ->
+                val start = if (block.start.isBefore(dayStart)) dayStart else block.start
+                val end = if (block.end.isAfter(dayEndExclusive)) dayEndExclusive else block.end
+                if (!start.isBefore(end)) null else TimeBlock(start = start, end = end)
+            }
+            .sortedBy { it.start }
+
+        if (clipped.isEmpty()) return emptyList()
+
+        val merged = mutableListOf<TimeBlock>()
+        var current = clipped.first()
+
+        for (index in 1 until clipped.size) {
+            val next = clipped[index]
+            if (!next.start.isAfter(current.end)) {
+                val mergedEnd = if (next.end.isAfter(current.end)) next.end else current.end
+                current = TimeBlock(start = current.start, end = mergedEnd)
+            } else {
+                merged += current
+                current = next
+            }
+        }
+
+        merged += current
+        return merged
+    }
+
+    fun buildFreeBlocks(
+        mergedBusyBlocks: List<TimeBlock>,
+        dayStart: LocalDateTime,
+        dayEndExclusive: LocalDateTime
+    ): List<TimeBlock> {
+        if (!dayStart.isBefore(dayEndExclusive)) return emptyList()
+        if (mergedBusyBlocks.isEmpty()) return listOf(TimeBlock(dayStart, dayEndExclusive))
+
+        val free = mutableListOf<TimeBlock>()
+        var cursor = dayStart
+
+        mergedBusyBlocks.forEach { busy ->
+            if (cursor.isBefore(busy.start)) {
+                free += TimeBlock(start = cursor, end = busy.start)
+            }
+            if (cursor.isBefore(busy.end)) {
+                cursor = busy.end
+            }
+        }
+
+        if (cursor.isBefore(dayEndExclusive)) {
+            free += TimeBlock(start = cursor, end = dayEndExclusive)
+        }
+
+        return free
+    }
+
+    fun calcOverdueLevel(deadline: LocalDate?, referenceDate: LocalDate): Int {
+        if (deadline == null) return 0
+
+        val daysLate = ChronoUnit.DAYS.between(deadline, referenceDate).toInt()
+        return when {
+            daysLate <= 0 -> 0
+            daysLate <= 2 -> 1
+            daysLate <= 7 -> 2
+            else -> 3
+        }
+    }
+
+    fun calcUrgencyLevel(deadline: LocalDate?, referenceDate: LocalDate): Int {
+        if (deadline == null) return 0
+
+        val daysToDeadline = ChronoUnit.DAYS.between(referenceDate, deadline).toInt()
+        return when {
+            daysToDeadline <= 0 -> 3
+            daysToDeadline <= 2 -> 2
+            daysToDeadline <= 7 -> 1
+            else -> 0
+        }
+    }
+
+    fun scoreTask(task: SmartSchedulerTask, referenceDate: LocalDate): Int {
+        val overdueLevel = calcOverdueLevel(task.deadline, referenceDate)
+        val urgencyLevel = calcUrgencyLevel(task.deadline, referenceDate)
+        return 100 * overdueLevel + 30 * urgencyLevel + 10 * task.priority
+    }
+
+    private fun deadlineSortKey(deadline: LocalDate?): LocalDate {
+        return deadline ?: LocalDate.of(9999, 12, 31)
+    }
+
+    private fun minutesBetween(start: LocalDateTime, end: LocalDateTime): Int {
+        return Duration.between(start, end).toMinutes().toInt()
+    }
+
+    private data class ScoredTask(
+        val task: SmartSchedulerTask,
+        val score: Int
+    )
+
+    fun generateSuggestions(input: SmartScheduleInput): List<SmartSuggestion> {
+        val date = input.targetDate
+        val keyIso = date.toString()
+        val suggestions = mutableListOf<SmartSuggestion>()
+
+        val unscheduledTasks = input.tasks.filter { task ->
+            !task.isCompleted &&
+                    task.isFlexible &&
+                    task.fixedStartIso.isNullOrBlank() &&
+                    (task.dueDateIso.isNullOrBlank() || !LocalDate.parse(task.dueDateIso).isBefore(date))
+        }
+
+        unscheduledTasks.forEach { task ->
             suggestions += SmartSuggestion(
-                taskId = t.id,
-                title = t.title,
+                taskId = task.id,
+                title = task.title,
                 suggestedDateIso = keyIso,
                 reason = "Flexible task can be done anytime before its due date",
                 confidence = 0.6f
             )
         }
 
-        // ----------------------------------------------
-        // 2) Suggest tasks due soon
-        // ----------------------------------------------
-        val dueSoon = input.tasks.filter { t ->
-            t.dueDateIso != null &&
-                    !LocalDate.parse(t.dueDateIso).isBefore(date) &&
-                    LocalDate.parse(t.dueDateIso).minusDays(2) <= date &&
-                    !t.isCompleted
+        val dueSoonTasks = input.tasks.filter { task ->
+            if (task.isCompleted || task.dueDateIso.isNullOrBlank()) return@filter false
+            val dueDate = LocalDate.parse(task.dueDateIso)
+            !dueDate.isBefore(date) && !dueDate.minusDays(2).isAfter(date)
         }
 
-        dueSoon.forEach { t ->
+        dueSoonTasks.forEach { task ->
             suggestions += SmartSuggestion(
-                taskId = t.id,
-                title = t.title,
+                taskId = task.id,
+                title = task.title,
                 suggestedDateIso = keyIso,
                 reason = "Task is due soon",
                 confidence = 0.85f
             )
         }
 
-        // ----------------------------------------------
-        // 3) Suggest habit reinforcement (optional)
-        // Example: habit for this day exists? Encourage it.
-        // ----------------------------------------------
-        val habitsToday = input.habits.filter { h ->
-            val freq = h.frequency.uppercase()
-            if (freq == "DAILY") return@filter true
-
+        val habitsToday = input.habits.filter { habit ->
+            val frequency = habit.frequency.uppercase()
+            if (frequency == "DAILY") return@filter true
             val dow3 = date.dayOfWeek.name.take(3).uppercase()
-            freq.split(",").map { it.trim() }.contains(dow3)
+            frequency.split(",").map { it.trim() }.contains(dow3)
         }
 
-        habitsToday.forEach { h ->
+        habitsToday.forEach { habit ->
             suggestions += SmartSuggestion(
-                taskId = -h.id, // negative id = habit suggestion
-                title = h.title,
+                taskId = -habit.id,
+                title = habit.title,
                 suggestedDateIso = keyIso,
                 reason = "Habit scheduled for this day",
                 confidence = 0.7f
@@ -86,3 +257,18 @@ object SmartScheduler {
         return suggestions
     }
 }
+
+data class SmartScheduleInput(
+    val tasks: List<Task>,
+    val habits: List<Habit>,
+    val events: List<CalendarEvent>,
+    val targetDate: LocalDate
+)
+
+data class SmartSuggestion(
+    val taskId: Int,
+    val title: String,
+    val suggestedDateIso: String,
+    val reason: String,
+    val confidence: Float
+)
