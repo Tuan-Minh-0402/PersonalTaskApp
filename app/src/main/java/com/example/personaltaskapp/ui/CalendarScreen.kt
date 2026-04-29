@@ -84,10 +84,11 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     val allEvents by viewModel.allEvents.collectAsState()
 
     // Always re-evaluate based on selected date
+    val tasksForDate = viewModel.tasksFor(selectedDate)
+
     val tasksByDate = remember(allTasks) {
         allTasks.groupBy { task -> taskDate(task) }.filterKeys { it != null }.mapKeys { it.key!! }
     }
-    val tasksForDate = tasksByDate[selectedDate].orEmpty()
     val habitsForDate = viewModel.habitsFor(selectedDate)
     val eventsForDate = viewModel.eventsFor(selectedDate)
     val rawSuggestionsForDate = viewModel.smartSuggestions(selectedDate)
@@ -185,6 +186,9 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     if (originalSuggestion != null) {
                         viewModel.applySmartSuggestion(originalSuggestion, selectedDate)
                     }
+                },
+                onTaskCheckedChange = { taskId, checked ->
+                    viewModel.updateTaskCompletion(taskId = taskId, isCompleted = checked)
                 }
             )
         }
@@ -310,7 +314,8 @@ fun CalendarBottomSheetContent(
     habits: List<Habit>,
     suggestions: List<CalendarSuggestionUi>,
     onAddEvent: () -> Unit,
-    onApplySuggestion: (CalendarSuggestionUi) -> Unit
+    onApplySuggestion: (CalendarSuggestionUi) -> Unit,
+    onTaskCheckedChange: (taskId: Int, isCompleted: Boolean) -> Unit
 ) {
     val visibleSuggestions = if (date >= LocalDate.now()) suggestions else emptyList()
     val dateText = "${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${date.dayOfMonth}"
@@ -350,7 +355,9 @@ fun CalendarBottomSheetContent(
                 ) {
                     Checkbox(
                         checked = task.isCompleted,
-                        onCheckedChange = { /* placeholder - connect to ViewModel later */ }
+                        onCheckedChange = { checked ->
+                            onTaskCheckedChange(task.id, checked)
+                        }
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(

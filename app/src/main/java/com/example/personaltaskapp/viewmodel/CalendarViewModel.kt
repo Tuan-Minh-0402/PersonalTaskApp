@@ -60,6 +60,13 @@ class CalendarViewModel(
         }
     }
 
+    fun updateTaskCompletion(taskId: Int, isCompleted: Boolean) {
+        viewModelScope.launch {
+            val task = allTasks.value.find { it.id == taskId } ?: return@launch
+            taskRepo.updateTask(task.copy(isCompleted = isCompleted))
+        }
+    }
+
     fun habitsFor(date: LocalDate): List<Habit> {
         val dow3 = date.dayOfWeek.name.take(3).uppercase()
         return allHabits.value.filter { habit ->
