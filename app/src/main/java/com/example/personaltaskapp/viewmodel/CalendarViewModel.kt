@@ -2,6 +2,7 @@ package com.example.personaltaskapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import com.example.personaltaskapp.model.CalendarEvent
 import com.example.personaltaskapp.model.Habit
 import com.example.personaltaskapp.model.Task
@@ -29,6 +30,9 @@ class CalendarViewModel(
     private val taskRepo: TaskRepository,
     private val habitRepo: HabitRepository
 ) : ViewModel() {
+    companion object {
+        private const val TAG = "CalendarViewModel"
+    }
 
     val allEvents: StateFlow<List<CalendarEvent>> =
         calendarRepo.getAllEvents()
@@ -156,8 +160,7 @@ class CalendarViewModel(
         val schedulerTasks = allTasks.value
             .filter { task ->
                 !task.isCompleted &&
-                        task.fixedStartIso.isNullOrBlank() &&
-                        task.earliestStartIso.isNullOrBlank()
+                        task.fixedStartIso.isNullOrBlank()
             }
             .map { task -> task.toSchedulerTask() }
 
@@ -174,11 +177,30 @@ class CalendarViewModel(
             event.toBusyBlock(selectedDate, defaultEventDurationMinutes)
         }
 
+        val fixedTaskBlocks = allTasks.value.mapNotNull { task ->
+            val fixedStartIso = task.fixedStartIso ?: return@mapNotNull null
+            val durationMinutes = task.estimatedMinutes
+            if (durationMinutes <= 0) return@mapNotNull null
+
+            val start = runCatching { LocalDateTime.parse(fixedStartIso) }.getOrNull()
+                ?: return@mapNotNull null
+            if (start.toLocalDate() != selectedDate) return@mapNotNull null
+
+            SmartSchedulerBusyBlock(
+                start = start,
+                end = start.plusMinutes(durationMinutes.toLong())
+            )
+        }
+        Log.d(
+            TAG,
+            "buildSchedulerInput(${selectedDate}): fixedTaskBlocks=${fixedTaskBlocks.size}"
+        )
+
         return SmartSchedulerInput(
             selectedDate = selectedDate,
             tasks = schedulerTasks,
             habitBlocks = habitBlocks,
-            eventBlocks = eventBlocks
+            eventBlocks = eventBlocks + fixedTaskBlocks
         )
     }
 
