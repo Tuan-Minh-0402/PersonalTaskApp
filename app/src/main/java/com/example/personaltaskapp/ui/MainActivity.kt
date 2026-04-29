@@ -1,25 +1,33 @@
 package com.example.personaltaskapp.ui
 
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.annotation.RequiresApi
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
 import com.example.personaltaskapp.data.DatabaseModule
+import com.example.personaltaskapp.repository.AuthManager
 import com.example.personaltaskapp.repository.CalendarRepository
 import com.example.personaltaskapp.repository.HabitRepository
 import com.example.personaltaskapp.repository.TaskRepository
@@ -35,33 +43,31 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // --- Database instance (singleton) ---
         val db = DatabaseModule.getDatabase(this)
+        val authManager = AuthManager(this)
 
-        // --- Repositories ---
         val taskRepo = TaskRepository(db.taskDao())
         val habitRepo = HabitRepository(db.habitDao())
         val calendarRepo = CalendarRepository(db.calendarEventDao())
 
-        // --- ViewModels that need factories (constructed here) ---
         val taskViewModel: TaskViewModel = ViewModelProvider(
             this,
             TaskViewModelFactory(taskRepo)
-        ).get(TaskViewModel::class.java)
+        )[TaskViewModel::class.java]
 
         val habitViewModel: HabitViewModel = ViewModelProvider(
             this,
             HabitViewModelFactory(habitRepo)
-        ).get(HabitViewModel::class.java)
+        )[HabitViewModel::class.java]
 
         val calendarViewModel: CalendarViewModel = ViewModelProvider(
             this,
             CalendarViewModelFactory(calendarRepo, taskRepo, habitRepo)
-        ).get(CalendarViewModel::class.java)
+        )[CalendarViewModel::class.java]
 
-        // --- Compose UI ---
         setContent {
             MainApp(
+                authManager = authManager,
                 taskViewModel = taskViewModel,
                 habitViewModel = habitViewModel,
                 calendarViewModel = calendarViewModel
@@ -70,17 +76,54 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainApp(
+    authManager: AuthManager,
     taskViewModel: TaskViewModel,
     habitViewModel: HabitViewModel,
     calendarViewModel: CalendarViewModel
 ) {
+    var isLoggedIn by remember { mutableStateOf(authManager.isLoggedIn()) }
+    var showRegister by remember { mutableStateOf(false) }
+
+    if (!isLoggedIn) {
+        if (showRegister) {
+            RegisterScreen(
+                authManager = authManager,
+                onRegisterSuccess = {
+                    isLoggedIn = true
+                    showRegister = false
+                },
+                onGoToLogin = { showRegister = false }
+            )
+        } else {
+            LoginScreen(
+                authManager = authManager,
+                onLoginSuccess = { isLoggedIn = true },
+                onGoToRegister = { showRegister = true }
+            )
+        }
+        return
+    }
+
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("PersonalTaskApp") },
+                actions = {
+                    TextButton(onClick = {
+                        authManager.logout()
+                        isLoggedIn = false
+                    }) {
+                        Text("Logout")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors()
+            )
+        },
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
