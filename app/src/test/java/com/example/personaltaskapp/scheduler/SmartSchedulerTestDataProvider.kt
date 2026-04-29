@@ -23,7 +23,13 @@ object SmartSchedulerTestDataProvider {
             sameDayDeadlineCase(),
             durationFitCase(),
             durationFitTightSlotCase(),
-            habitBusyBlockCase()
+            habitBusyBlockCase(),
+            lowPriorityNoDeadlineCase(),
+            highPriorityNoDeadlineCase(),
+            overdueLowPriorityCase(),
+            nearDeadlineLowCase(),
+            eligibleNoSlotCase(),
+            completedTaskIgnoredCase()
         )
     }
 
@@ -34,7 +40,7 @@ object SmartSchedulerTestDataProvider {
                 selectedDate = selectedDate,
                 tasks = listOf(
                     task(id = "T1", duration = 60, priority = 1, deadline = selectedDate.plusDays(3)),
-                    task(id = "T2", duration = 30, priority = 1, deadline = selectedDate.plusDays(3))
+                    task(id = "T2", duration = 30, priority = 3, deadline = selectedDate.plusDays(3))
                 ),
                 habitBlocks = emptyList(),
                 eventBlocks = emptyList()
@@ -179,6 +185,78 @@ object SmartSchedulerTestDataProvider {
                     busy(8, 45, 10, 0),
                     busy(12, 0, 22, 0)
                 )
+            )
+        )
+    }
+
+    fun lowPriorityNoDeadlineCase(): SchedulerTestCase {
+        return SchedulerTestCase(
+            name = "low_priority_no_deadline",
+            input = SmartSchedulerInput(
+                selectedDate = selectedDate,
+                tasks = listOf(task(id = "LOW_NO_DEADLINE", duration = 30, priority = 1, deadline = null)),
+                habitBlocks = emptyList(),
+                eventBlocks = emptyList()
+            )
+        )
+    }
+
+    fun highPriorityNoDeadlineCase(): SchedulerTestCase {
+        return SchedulerTestCase(
+            name = "high_priority_no_deadline",
+            input = SmartSchedulerInput(
+                selectedDate = selectedDate,
+                tasks = listOf(task(id = "HIGH_NO_DEADLINE", duration = 30, priority = 3, deadline = null)),
+                habitBlocks = emptyList(),
+                eventBlocks = emptyList()
+            )
+        )
+    }
+
+    fun overdueLowPriorityCase(): SchedulerTestCase {
+        return SchedulerTestCase(
+            name = "overdue_low_priority",
+            input = SmartSchedulerInput(
+                selectedDate = selectedDate,
+                tasks = listOf(task(id = "OVERDUE_LOW", duration = 30, priority = 1, deadline = selectedDate.minusDays(1))),
+                habitBlocks = emptyList(),
+                eventBlocks = emptyList()
+            )
+        )
+    }
+
+    fun nearDeadlineLowCase(): SchedulerTestCase {
+        return SchedulerTestCase(
+            name = "near_deadline_low",
+            input = SmartSchedulerInput(
+                selectedDate = selectedDate,
+                tasks = listOf(task(id = "NEAR_LOW", duration = 30, priority = 1, deadline = selectedDate.plusDays(1))),
+                habitBlocks = emptyList(),
+                eventBlocks = emptyList()
+            )
+        )
+    }
+
+    fun eligibleNoSlotCase(): SchedulerTestCase {
+        return SchedulerTestCase(
+            name = "eligible_no_slot",
+            input = SmartSchedulerInput(
+                selectedDate = selectedDate,
+                tasks = listOf(task(id = "ELIGIBLE_NO_SLOT", duration = 30, priority = 3, deadline = null)),
+                habitBlocks = emptyList(),
+                eventBlocks = listOf(busy(8, 0, 22, 0))
+            )
+        )
+    }
+
+    fun completedTaskIgnoredCase(): SchedulerTestCase {
+        return SchedulerTestCase(
+            name = "completed_task_ignored",
+            input = SmartSchedulerInput(
+                selectedDate = selectedDate,
+                tasks = listOf(task(id = "DONE", duration = 45, priority = 3, deadline = selectedDate, isCompleted = true)),
+                habitBlocks = emptyList(),
+                eventBlocks = emptyList()
             )
         )
     }

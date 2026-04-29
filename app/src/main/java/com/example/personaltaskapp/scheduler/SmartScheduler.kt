@@ -45,19 +45,43 @@ object SmartScheduler {
         ).toMutableList()
 
         val scheduled = mutableListOf<ScheduledTaskBlock>()
-        val remainingTasks = validTasks.toMutableList()
+        val remainingTasks = validTasks
+            .map { task ->
+                val overdueLevel = calcOverdueLevel(task.deadline, referenceDate)
+                val urgencyLevel = calcUrgencyLevel(task.deadline, referenceDate)
+                val priorityValue = task.priority
+                val baseScore = calcBaseScore(
+                    overdueLevel = overdueLevel,
+                    urgencyLevel = urgencyLevel,
+                    priorityValue = priorityValue
+                )
+                RankedTask(
+                    task = task,
+                    baseScore = baseScore,
+                    overdueLevel = overdueLevel,
+                    urgencyLevel = urgencyLevel,
+                    priorityValue = priorityValue
+                )
+            }
+            .filter { rankedTask ->
+                isEligibleForToday(
+                    baseScore = rankedTask.baseScore,
+                    overdueLevel = rankedTask.overdueLevel,
+                    urgencyLevel = rankedTask.urgencyLevel,
+                    priorityValue = rankedTask.priorityValue
+                )
+            }
+            .toMutableList()
 
         while (remainingTasks.isNotEmpty()) {
             val sortedTasks = remainingTasks
-                .map { task ->
-                    ScoredTask(
-                        task = task,
-                        score = scoreTask(task, referenceDate),
-                        fitLevel = calcFitLevel(task.durationMinutes, freeBlocks)
+                .map { rankedTask ->
+                    rankedTask.copy(
+                        fitLevel = calcFitLevel(rankedTask.task.durationMinutes, freeBlocks)
                     )
                 }
                 .sortedWith(
-                    compareByDescending<ScoredTask> { it.score }
+                    compareByDescending<RankedTask> { it.baseScore }
                         .thenBy { it.task.deadline == null }
                         .thenBy { deadlineSortKey(it.task.deadline) }
                         .thenByDescending { it.task.priority }
@@ -66,14 +90,15 @@ object SmartScheduler {
                         .thenBy { it.task.id }
                 )
 
-            val chosenTask = sortedTasks.first().task
+            val chosenRankedTask = sortedTasks.first()
+            val chosenTask = chosenRankedTask.task
             val freeIndex = freeBlocks.indexOfFirst { freeBlock ->
                 minutesBetween(freeBlock.start, freeBlock.end) >= chosenTask.durationMinutes
             }
 
             if (freeIndex == -1) {
                 unscheduled += UnscheduledTask(chosenTask.id, UnscheduledReason.NO_SLOT)
-                remainingTasks.remove(chosenTask)
+                remainingTasks.removeAll { it.task.id == chosenTask.id }
                 continue
             }
 
@@ -92,7 +117,7 @@ object SmartScheduler {
             } else {
                 freeBlocks[freeIndex] = TimeBlock(start = scheduledEnd, end = chosenBlock.end)
             }
-            remainingTasks.remove(chosenTask)
+            remainingTasks.removeAll { it.task.id == chosenTask.id }
         }
 
         return SmartSchedulerResult(
@@ -190,7 +215,32 @@ object SmartScheduler {
     fun scoreTask(task: SmartSchedulerTask, referenceDate: LocalDate): Int {
         val overdueLevel = calcOverdueLevel(task.deadline, referenceDate)
         val urgencyLevel = calcUrgencyLevel(task.deadline, referenceDate)
-        return 100 * overdueLevel + 30 * urgencyLevel + 10 * task.priority
+        return calcBaseScore(
+            overdueLevel = overdueLevel,
+            urgencyLevel = urgencyLevel,
+            priorityValue = task.priority
+        )
+    }
+
+    fun calcBaseScore(overdueLevel: Int, urgencyLevel: Int, priorityValue: Int): Int {
+        return 100 * overdueLevel + 30 * urgencyLevel + 10 * priorityValue
+    }
+
+    fun hasStrongSignal(overdueLevel: Int, urgencyLevel: Int, priorityValue: Int): Boolean {
+        return overdueLevel > 0 || urgencyLevel >= 2 || priorityValue >= 3
+    }
+
+    fun isEligibleForToday(
+        baseScore: Int,
+        overdueLevel: Int,
+        urgencyLevel: Int,
+        priorityValue: Int
+    ): Boolean {
+        return hasStrongSignal(
+            overdueLevel = overdueLevel,
+            urgencyLevel = urgencyLevel,
+            priorityValue = priorityValue
+        ) || baseScore >= 40
     }
 
     fun calcFitLevel(durationMinutes: Int, freeBlocks: List<TimeBlock>): Int {
@@ -215,10 +265,13 @@ object SmartScheduler {
         return Duration.between(start, end).toMinutes().toInt()
     }
 
-    private data class ScoredTask(
+    private data class RankedTask(
         val task: SmartSchedulerTask,
-        val score: Int,
-        val fitLevel: Int
+        val baseScore: Int,
+        val overdueLevel: Int,
+        val urgencyLevel: Int,
+        val priorityValue: Int,
+        val fitLevel: Int = 0
     )
 
 }
