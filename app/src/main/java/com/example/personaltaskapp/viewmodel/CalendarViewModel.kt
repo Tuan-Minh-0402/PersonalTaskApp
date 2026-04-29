@@ -133,7 +133,13 @@ class CalendarViewModel(
     }
 
     private fun buildSchedulerInput(selectedDate: LocalDate): SmartSchedulerInput {
-        val schedulerTasks = allTasks.value.map { task -> task.toSchedulerTask() }
+        val schedulerTasks = allTasks.value
+            .filter { task ->
+                !task.isCompleted &&
+                        task.fixedStartIso.isNullOrBlank() &&
+                        task.earliestStartIso.isNullOrBlank()
+            }
+            .map { task -> task.toSchedulerTask() }
 
         val habitBlocks = habitsFor(selectedDate).map { habit ->
             val start = selectedDate.atTime(habit.startMinutes / 60, habit.startMinutes % 60)

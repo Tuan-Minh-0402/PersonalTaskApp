@@ -18,8 +18,8 @@ object SmartScheduler {
      */
     fun scheduleDay(input: SmartSchedulerInput): SmartSchedulerResult {
         val referenceDate = input.selectedDate
-        val dayStart = referenceDate.atStartOfDay()
-        val dayEndExclusive = referenceDate.plusDays(1).atStartOfDay()
+        val dayStart = referenceDate.atTime(8, 0)
+        val dayEndExclusive = referenceDate.atTime(22, 0)
 
         val unscheduled = mutableListOf<UnscheduledTask>()
         val validTasks = mutableListOf<SmartSchedulerTask>()
@@ -47,36 +47,45 @@ object SmartScheduler {
             dayEndExclusive = dayEndExclusive
         ).toMutableList()
 
-        val sortedTasks = validTasks
-            .map { task -> ScoredTask(task = task, score = scoreTask(task, referenceDate)) }
-            .sortedWith(
-                compareByDescending<ScoredTask> { it.score }
-                    .thenBy { it.task.deadline == null }
-                    .thenBy { deadlineSortKey(it.task.deadline) }
-                    .thenByDescending { it.task.priority }
-                    .thenBy { it.task.durationMinutes }
-                    .thenBy { it.task.id }
-            )
-
         val scheduled = mutableListOf<ScheduledTaskBlock>()
+        val remainingTasks = validTasks.toMutableList()
 
-        sortedTasks.forEach { scoredTask ->
-            val task = scoredTask.task
+        while (remainingTasks.isNotEmpty()) {
+            val sortedTasks = remainingTasks
+                .map { task ->
+                    ScoredTask(
+                        task = task,
+                        score = scoreTask(task, referenceDate),
+                        fitLevel = calcFitLevel(task.durationMinutes, freeBlocks)
+                    )
+                }
+                .sortedWith(
+                    compareByDescending<ScoredTask> { it.score }
+                        .thenBy { it.task.deadline == null }
+                        .thenBy { deadlineSortKey(it.task.deadline) }
+                        .thenByDescending { it.task.priority }
+                        .thenByDescending { it.fitLevel }
+                        .thenBy { it.task.durationMinutes }
+                        .thenBy { it.task.id }
+                )
+
+            val chosenTask = sortedTasks.first().task
             val freeIndex = freeBlocks.indexOfFirst { freeBlock ->
-                minutesBetween(freeBlock.start, freeBlock.end) >= task.durationMinutes
+                minutesBetween(freeBlock.start, freeBlock.end) >= chosenTask.durationMinutes
             }
 
             if (freeIndex == -1) {
-                unscheduled += UnscheduledTask(task.id, UnscheduledReason.NO_SLOT)
-                return@forEach
+                unscheduled += UnscheduledTask(chosenTask.id, UnscheduledReason.NO_SLOT)
+                remainingTasks.remove(chosenTask)
+                continue
             }
 
             val chosenBlock = freeBlocks[freeIndex]
             val scheduledStart = chosenBlock.start
-            val scheduledEnd = scheduledStart.plusMinutes(task.durationMinutes.toLong())
+            val scheduledEnd = scheduledStart.plusMinutes(chosenTask.durationMinutes.toLong())
 
             scheduled += ScheduledTaskBlock(
-                taskId = task.id,
+                taskId = chosenTask.id,
                 start = scheduledStart,
                 end = scheduledEnd
             )
@@ -86,6 +95,7 @@ object SmartScheduler {
             } else {
                 freeBlocks[freeIndex] = TimeBlock(start = scheduledEnd, end = chosenBlock.end)
             }
+            remainingTasks.remove(chosenTask)
         }
 
         return SmartSchedulerResult(
@@ -186,6 +196,20 @@ object SmartScheduler {
         return 100 * overdueLevel + 30 * urgencyLevel + 10 * task.priority
     }
 
+    fun calcFitLevel(durationMinutes: Int, freeBlocks: List<TimeBlock>): Int {
+        val smallestFittingBlock = freeBlocks
+            .map { block -> minutesBetween(block.start, block.end) }
+            .filter { blockMinutes -> blockMinutes >= durationMinutes }
+            .minOrNull() ?: return 0
+
+        val leftover = smallestFittingBlock - durationMinutes
+        return when {
+            leftover <= 15 -> 2
+            leftover <= 60 -> 1
+            else -> 0
+        }
+    }
+
     private fun deadlineSortKey(deadline: LocalDate?): LocalDate {
         return deadline ?: LocalDate.of(9999, 12, 31)
     }
@@ -196,7 +220,8 @@ object SmartScheduler {
 
     private data class ScoredTask(
         val task: SmartSchedulerTask,
-        val score: Int
+        val score: Int,
+        val fitLevel: Int
     )
 
     fun generateSuggestions(input: SmartScheduleInput): List<SmartSuggestion> {

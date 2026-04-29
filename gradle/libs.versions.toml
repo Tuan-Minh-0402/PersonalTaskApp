@@ -10,6 +10,7 @@ lifecycleRuntimeKtx = "2.8.6"
 lifecycleViewModelCompose = "2.6.1"
 material3 = "1.3.0"
 room = "2.6.1"
+junit4 = "4.13.2"
 
 [libraries]
 # Core
@@ -38,6 +39,7 @@ androidx-activity-compose = { group = "androidx.activity", name = "activity-comp
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
