@@ -1,8 +1,5 @@
 package com.example.personaltaskapp.scheduler
 
-import com.example.personaltaskapp.model.CalendarEvent
-import com.example.personaltaskapp.model.Habit
-import com.example.personaltaskapp.model.Task
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -224,76 +221,14 @@ object SmartScheduler {
         val fitLevel: Int
     )
 
-    fun generateSuggestions(input: SmartScheduleInput): List<SmartSuggestion> {
-        val date = input.targetDate
-        val keyIso = date.toString()
-        val suggestions = mutableListOf<SmartSuggestion>()
-
-        val unscheduledTasks = input.tasks.filter { task ->
-            !task.isCompleted &&
-                    task.isFlexible &&
-                    task.fixedStartIso.isNullOrBlank() &&
-                    (task.dueDateIso.isNullOrBlank() || !LocalDate.parse(task.dueDateIso).isBefore(date))
-        }
-
-        unscheduledTasks.forEach { task ->
-            suggestions += SmartSuggestion(
-                taskId = task.id,
-                title = task.title,
-                suggestedDateIso = keyIso,
-                reason = "Flexible task can be done anytime before its due date",
-                confidence = 0.6f
-            )
-        }
-
-        val dueSoonTasks = input.tasks.filter { task ->
-            if (task.isCompleted || task.dueDateIso.isNullOrBlank()) return@filter false
-            val dueDate = LocalDate.parse(task.dueDateIso)
-            !dueDate.isBefore(date) && !dueDate.minusDays(2).isAfter(date)
-        }
-
-        dueSoonTasks.forEach { task ->
-            suggestions += SmartSuggestion(
-                taskId = task.id,
-                title = task.title,
-                suggestedDateIso = keyIso,
-                reason = "Task is due soon",
-                confidence = 0.85f
-            )
-        }
-
-        val habitsToday = input.habits.filter { habit ->
-            val frequency = habit.frequency.uppercase()
-            if (frequency == "DAILY") return@filter true
-            val dow3 = date.dayOfWeek.name.take(3).uppercase()
-            frequency.split(",").map { it.trim() }.contains(dow3)
-        }
-
-        habitsToday.forEach { habit ->
-            suggestions += SmartSuggestion(
-                taskId = -habit.id,
-                title = habit.title,
-                suggestedDateIso = keyIso,
-                reason = "Habit scheduled for this day",
-                confidence = 0.7f
-            )
-        }
-
-        return suggestions
-    }
 }
-
-data class SmartScheduleInput(
-    val tasks: List<Task>,
-    val habits: List<Habit>,
-    val events: List<CalendarEvent>,
-    val targetDate: LocalDate
-)
 
 data class SmartSuggestion(
     val taskId: Int,
     val title: String,
     val suggestedDateIso: String,
     val reason: String,
-    val confidence: Float
+    val confidence: Float,
+    val suggestedStartIso: String? = null,
+    val suggestedEndIso: String? = null
 )

@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material3.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.personaltaskapp.data.DatabaseModule
 import com.example.personaltaskapp.repository.CalendarRepository
 import com.example.personaltaskapp.repository.HabitRepository
@@ -28,14 +27,11 @@ import com.example.personaltaskapp.viewmodel.CalendarViewModel
 import com.example.personaltaskapp.viewmodel.CalendarViewModelFactory
 import com.example.personaltaskapp.viewmodel.HabitViewModel
 import com.example.personaltaskapp.viewmodel.HabitViewModelFactory
-import com.example.personaltaskapp.viewmodel.PomodoroManager
 import com.example.personaltaskapp.viewmodel.TaskViewModel
 import com.example.personaltaskapp.viewmodel.TaskViewModelFactory
 
-@RequiresApi(Build.VERSION_CODES.O)
 class MainActivity : ComponentActivity() {
 
-    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -76,7 +72,6 @@ class MainActivity : ComponentActivity() {
 
 
 
-@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun MainApp(
     taskViewModel: TaskViewModel,

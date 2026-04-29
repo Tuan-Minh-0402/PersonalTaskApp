@@ -67,7 +67,6 @@ import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
 
-@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarScreen(viewModel: CalendarViewModel) {
@@ -178,7 +177,11 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 suggestions = suggestionItemsForDate,
                 onAddEvent = { showAddEventDialog = true },
                 onApplySuggestion = { suggestionItem ->
-                    val originalSuggestion = rawSuggestionsForDate.firstOrNull { it.taskId == suggestionItem.taskId }
+                    val originalSuggestion = rawSuggestionsForDate.firstOrNull {
+                        it.taskId == suggestionItem.taskId &&
+                                it.suggestedStartIso == suggestionItem.suggestedStartIso &&
+                                it.suggestedEndIso == suggestionItem.suggestedEndIso
+                    }
                     if (originalSuggestion != null) {
                         viewModel.applySmartSuggestion(originalSuggestion, selectedDate)
                     }
@@ -483,7 +486,9 @@ fun CalendarBottomSheetContent(
 data class CalendarSuggestionUi(
     val taskId: Int,
     val title: String,
-    val displayReason: String
+    val displayReason: String,
+    val suggestedStartIso: String?,
+    val suggestedEndIso: String?
 )
 
 private fun SmartSuggestion.toUiSuggestion(tasks: List<Task>): CalendarSuggestionUi {
@@ -493,7 +498,9 @@ private fun SmartSuggestion.toUiSuggestion(tasks: List<Task>): CalendarSuggestio
     return CalendarSuggestionUi(
         taskId = taskId,
         title = uiTitle,
-        displayReason = reason
+        displayReason = reason,
+        suggestedStartIso = suggestedStartIso,
+        suggestedEndIso = suggestedEndIso
     )
 }
 

@@ -2,7 +2,6 @@ package com.example.personaltaskapp.data
 
 import android.content.Context
 import androidx.room.Room
-import com.example.personaltaskapp.data.AppDatabase
 
 object DatabaseModule {
 

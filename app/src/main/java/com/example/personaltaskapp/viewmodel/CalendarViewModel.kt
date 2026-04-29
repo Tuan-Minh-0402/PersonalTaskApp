@@ -1,7 +1,5 @@
 package com.example.personaltaskapp.viewmodel
 
-import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.personaltaskapp.model.CalendarEvent
@@ -16,6 +14,7 @@ import com.example.personaltaskapp.scheduler.SmartSchedulerInput
 import com.example.personaltaskapp.scheduler.SmartSchedulerResult
 import com.example.personaltaskapp.scheduler.SmartSchedulerTask
 import com.example.personaltaskapp.scheduler.SmartSuggestion
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -45,6 +44,7 @@ class CalendarViewModel(
 
     private val isoDate = DateTimeFormatter.ISO_LOCAL_DATE
     private val defaultEventDurationMinutes = 60L
+    private val appliedSuggestionKeys = MutableStateFlow(setOf<String>())
 
     fun eventsFor(date: LocalDate): List<CalendarEvent> {
         val key = date.format(isoDate)
@@ -78,7 +78,9 @@ class CalendarViewModel(
             date = date,
             result = schedulerResult,
             sourceTasks = allTasks.value
-        )
+        ).filterNot { suggestion ->
+            buildSuggestionKey(suggestion) in appliedSuggestionKeys.value
+        }
     }
 
     fun applySmartSuggestion(s: SmartSuggestion, date: LocalDate) {
@@ -86,10 +88,12 @@ class CalendarViewModel(
             if (s.taskId > 0) {
                 val task = allTasks.value.find { it.id == s.taskId }
                 if (task != null) {
+                    val startIso = s.suggestedStartIso ?: date.atStartOfDay().toString()
                     val updated = task.copy(
-                        fixedStartIso = date.atStartOfDay().toString()
+                        fixedStartIso = startIso
                     )
                     taskRepo.updateTask(updated)
+                    appliedSuggestionKeys.value = appliedSuggestionKeys.value + buildSuggestionKey(s)
                 }
             }
 
@@ -106,7 +110,16 @@ class CalendarViewModel(
                         startTimeIso = "%02d:%02d".format(hour, minute),
                         type = "HABIT"
                     )
-                    calendarRepo.insertEvent(evt)
+                    val duplicateExists = allEvents.value.any { existing ->
+                        existing.title == evt.title &&
+                                existing.dateIso == evt.dateIso &&
+                                existing.startTimeIso == evt.startTimeIso &&
+                                existing.type == evt.type
+                    }
+                    if (!duplicateExists) {
+                        calendarRepo.insertEvent(evt)
+                    }
+                    appliedSuggestionKeys.value = appliedSuggestionKeys.value + buildSuggestionKey(s)
                 }
             }
         }
@@ -176,9 +189,15 @@ class CalendarViewModel(
                 title = task.title,
                 suggestedDateIso = date.toString(),
                 reason = "Scheduled ${block.start.toLocalTime()} - ${block.end.toLocalTime()}",
-                confidence = 0.9f
+                confidence = 0.9f,
+                suggestedStartIso = block.start.toString(),
+                suggestedEndIso = block.end.toString()
             )
         }
+    }
+
+    private fun buildSuggestionKey(s: SmartSuggestion): String {
+        return "${s.taskId}|${s.suggestedDateIso}|${s.suggestedStartIso ?: ""}|${s.suggestedEndIso ?: ""}"
     }
 
     private fun Task.toSchedulerTask(): SmartSchedulerTask {
