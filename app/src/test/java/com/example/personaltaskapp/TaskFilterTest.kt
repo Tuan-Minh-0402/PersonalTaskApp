@@ -1,6 +1,7 @@
-package com.example.personaltaskapp.utils
+package com.example.personaltaskapp
 
 import com.example.personaltaskapp.model.Task
+import com.example.personaltaskapp.utils.TaskFilter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

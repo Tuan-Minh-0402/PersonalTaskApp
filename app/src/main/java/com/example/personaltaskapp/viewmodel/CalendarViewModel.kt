@@ -227,12 +227,38 @@ class CalendarViewModel(
                 taskId = task.id,
                 title = task.title,
                 suggestedDateIso = date.toString(),
-                reason = "Scheduled ${block.start.toLocalTime()} - ${block.end.toLocalTime()}",
+                reason = buildSuggestionReason(
+                    overdueLevel = block.overdueLevel,
+                    urgencyLevel = block.urgencyLevel,
+                    priority = block.priorityValue,
+                    fitLevel = block.fitLevel,
+                    baseScore = block.baseScore
+                ),
                 confidence = 0.9f,
                 suggestedStartIso = block.start.toString(),
                 suggestedEndIso = block.end.toString()
             )
         }
+    }
+
+
+    private fun buildSuggestionReason(
+        overdueLevel: Int,
+        urgencyLevel: Int,
+        priority: Int,
+        fitLevel: Int,
+        baseScore: Int
+    ): String {
+        val reasons = mutableListOf<String>()
+        if (overdueLevel > 0) reasons += "Overdue task"
+        if (urgencyLevel >= 2) reasons += "Deadline is near"
+        if (priority >= 3) reasons += "High priority"
+        if (fitLevel >= 2) reasons += "Fits available time slot"
+
+        if (reasons.isNotEmpty()) return reasons.take(2).joinToString(" • ")
+
+        return if (baseScore >= 40) "Important task"
+        else "Suggested by scheduler"
     }
 
     private fun buildSuggestionKey(s: SmartSuggestion): String {
@@ -266,3 +292,5 @@ class CalendarViewModel(
         )
     }
 }
+
+

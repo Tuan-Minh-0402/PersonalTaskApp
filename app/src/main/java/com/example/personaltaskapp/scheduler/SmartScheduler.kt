@@ -109,7 +109,12 @@ object SmartScheduler {
             scheduled += ScheduledTaskBlock(
                 taskId = chosenTask.id,
                 start = scheduledStart,
-                end = scheduledEnd
+                end = scheduledEnd,
+                overdueLevel = chosenRankedTask.overdueLevel,
+                urgencyLevel = chosenRankedTask.urgencyLevel,
+                priorityValue = chosenRankedTask.priorityValue,
+                fitLevel = chosenRankedTask.fitLevel,
+                baseScore = chosenRankedTask.baseScore
             )
 
             if (scheduledEnd == chosenBlock.end) {

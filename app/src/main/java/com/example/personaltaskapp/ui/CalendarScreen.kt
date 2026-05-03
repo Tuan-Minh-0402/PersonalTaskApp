@@ -218,6 +218,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 },
                 onTaskCheckedChange = { taskId, checked ->
                     viewModel.updateTaskCompletion(taskId = taskId, isCompleted = checked)
+                    viewModel.updateTaskCompletion(taskId = taskId, isCompleted = checked)
                 }
             )
         }
@@ -522,23 +523,29 @@ fun CalendarBottomSheetContent(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                             Spacer(Modifier.width(8.dp))
-                            val suggestedTime = extractTimeFromText(suggestion.displayReason)
-                            val titleWithTime = if (suggestedTime == null) {
-                                "✨ ${suggestion.title}"
-                            } else {
-                                "✨ ${suggestion.title} ($suggestedTime)"
-                            }
                             Text(
-                                text = titleWithTime,
+                                text = "✨ ${suggestion.title}",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        val scheduleText = formatSuggestionTimeRange(
+                            suggestion.suggestedStartIso,
+                            suggestion.suggestedEndIso
+                        )
+                        if (scheduleText != null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = scheduleText,
+                                style = MaterialTheme.typography.bodyMedium
                             )
                         }
 
                         if (suggestion.displayReason.isNotBlank()) {
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                text = "Because: ${suggestion.displayReason}",
+                                text = "Reason: ${suggestion.displayReason}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
@@ -600,6 +607,15 @@ private fun extractTimeFromText(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
     val match = Regex("(\\d{2}:\\d{2})").find(raw)
     return match?.groupValues?.get(1)
+}
+
+private fun formatSuggestionTimeRange(startIso: String?, endIso: String?): String? {
+    if (startIso.isNullOrBlank() || endIso.isNullOrBlank()) return null
+    val start = runCatching { java.time.LocalDateTime.parse(startIso) }.getOrNull() ?: return null
+    val end = runCatching { java.time.LocalDateTime.parse(endIso) }.getOrNull() ?: return null
+    return "%02d:%02d - %02d:%02d".format(
+        start.hour, start.minute, end.hour, end.minute
+    )
 }
 
 @RequiresApi(Build.VERSION_CODES.O)

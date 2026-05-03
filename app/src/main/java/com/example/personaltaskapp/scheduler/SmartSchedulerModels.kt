@@ -31,7 +31,12 @@ data class TimeBlock(
 data class ScheduledTaskBlock(
     val taskId: String,
     val start: LocalDateTime,
-    val end: LocalDateTime
+    val end: LocalDateTime,
+    val overdueLevel: Int = 0,
+    val urgencyLevel: Int = 0,
+    val priorityValue: Int = 0,
+    val fitLevel: Int = 0,
+    val baseScore: Int = 0
 )
 
 data class UnscheduledTask(
