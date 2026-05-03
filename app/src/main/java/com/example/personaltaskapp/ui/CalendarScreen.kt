@@ -256,7 +256,6 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     }
 }
 
-@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun CalendarMonthGrid(
     month: YearMonth,
@@ -353,7 +352,6 @@ fun Dot(color: Color) {
     )
 }
 
-@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun CalendarBottomSheetContent(
     date: LocalDate,
