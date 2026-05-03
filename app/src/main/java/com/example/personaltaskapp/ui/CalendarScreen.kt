@@ -26,7 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -218,7 +217,13 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 },
                 onTaskCheckedChange = { taskId, checked ->
                     viewModel.updateTaskCompletion(taskId = taskId, isCompleted = checked)
-                    viewModel.updateTaskCompletion(taskId = taskId, isCompleted = checked)
+                },
+                isHabitCompleted = { habitId, day ->
+                    val habit = allHabits.firstOrNull { it.id == habitId }
+                    habit?.let { viewModel.isHabitCompletedOnDate(it, day) } ?: false
+                },
+                onHabitCheckedChange = { habitId, day, checked ->
+                    viewModel.updateHabitCompletionForDate(habitId, day, checked)
                 }
             )
         }
@@ -364,7 +369,9 @@ fun CalendarBottomSheetContent(
     onEditEvent: (CalendarEvent) -> Unit,
     onDeleteEvent: (CalendarEvent) -> Unit,
     onApplySuggestion: (CalendarSuggestionUi) -> Unit,
-    onTaskCheckedChange: (taskId: Int, isCompleted: Boolean) -> Unit
+    onTaskCheckedChange: (taskId: Int, isCompleted: Boolean) -> Unit,
+    isHabitCompleted: (habitId: Int, date: LocalDate) -> Boolean,
+    onHabitCheckedChange: (habitId: Int, date: LocalDate, isCompleted: Boolean) -> Unit
 ) {
     val visibleSuggestions = if (date >= LocalDate.now()) suggestions else emptyList()
     val dateText = "${date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${date.dayOfMonth}"
@@ -426,6 +433,13 @@ fun CalendarBottomSheetContent(
             Text("No habits for this day", style = MaterialTheme.typography.bodyMedium)
         } else {
             habits.forEach { habit ->
+                val checked = isHabitCompleted(habit.id, date)
+                val monthStreak = habit.completedDatesIsoCsv
+                    .split(",")
+                    .map { it.trim() }
+                    .filter { it.startsWith("${date.year}-%02d".format(date.monthValue)) }
+                    .distinct()
+                    .count()
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -433,10 +447,11 @@ fun CalendarBottomSheetContent(
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Repeat,
-                                contentDescription = "Habit",
-                                tint = MaterialTheme.colorScheme.tertiary
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = {
+                                    onHabitCheckedChange(habit.id, date, it)
+                                }
                             )
                             Spacer(Modifier.width(8.dp))
                             val durationSuffix = if (habit.durationMinutes > 0) {
@@ -451,7 +466,7 @@ fun CalendarBottomSheetContent(
                         }
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "🔥 Streak: 0",
+                            text = "🔥 Streak: $monthStreak",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

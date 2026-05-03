@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 class CalendarViewModel(
@@ -78,6 +79,37 @@ class CalendarViewModel(
                     (freq == "WEEKDAYS" && dow3 in listOf("MON", "TUE", "WED", "THU", "FRI")) ||
                     (freq == "WEEKENDS" && dow3 in listOf("SAT", "SUN")) ||
                     (freq.isNotBlank() && freq.split(",").map { it.trim() }.contains(dow3))
+        }
+    }
+
+    fun isHabitCompletedOnDate(habit: Habit, date: LocalDate): Boolean {
+        val key = date.toString()
+        return habit.completedDatesSet().contains(key)
+    }
+
+    fun updateHabitCompletionForDate(habitId: Int, date: LocalDate, isCompleted: Boolean) {
+        viewModelScope.launch {
+            val habit = allHabits.value.find { it.id == habitId } ?: return@launch
+            val key = date.toString()
+            val completedDates = habit.completedDatesSet().toMutableSet()
+
+            if (isCompleted) {
+                completedDates.add(key)
+            } else {
+                completedDates.remove(key)
+            }
+
+            val streakForMonth = completedDates.count { iso ->
+                runCatching { YearMonth.from(LocalDate.parse(iso)) }.getOrNull() == YearMonth.from(date)
+            }
+
+            val lastCompletedIso = completedDates.maxOrNull()
+            val updated = habit.copy(
+                streak = streakForMonth,
+                lastCompletedIso = lastCompletedIso,
+                completedDatesIsoCsv = completedDates.sorted().joinToString(",")
+            )
+            habitRepo.updateHabit(updated)
         }
     }
 
@@ -291,6 +323,12 @@ class CalendarViewModel(
             end = start.plusMinutes(duration)
         )
     }
+
+    private fun Habit.completedDatesSet(): Set<String> {
+        if (completedDatesIsoCsv.isBlank()) return emptySet()
+        return completedDatesIsoCsv.split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
 }
-
-

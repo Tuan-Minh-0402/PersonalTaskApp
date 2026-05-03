@@ -34,5 +34,6 @@ data class Habit(
      * Progress fields
      */
     val streak: Int = 0,
-    val lastCompletedIso: String? = null
+    val lastCompletedIso: String? = null,
+    val completedDatesIsoCsv: String = ""
 )
