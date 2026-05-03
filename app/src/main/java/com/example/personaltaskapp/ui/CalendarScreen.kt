@@ -62,8 +62,8 @@ import com.example.personaltaskapp.model.Task
 import com.example.personaltaskapp.scheduler.SmartSuggestion
 import com.example.personaltaskapp.viewmodel.CalendarViewModel
 import java.time.LocalDate
-import java.time.format.DateTimeParseException
 import java.time.YearMonth
+import java.time.format.DateTimeParseException
 import java.time.format.TextStyle
 import java.util.Locale
 
@@ -77,6 +77,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     val bottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showSheet by remember { mutableStateOf(false) }
     var showAddEventDialog by remember { mutableStateOf(false) }
+    var editingEvent by remember { mutableStateOf<CalendarEvent?>(null) }
 
     // LIVE COLLECTION OF FLOWS — required for correct recomposition
     val allTasks by viewModel.allTasks.collectAsState()
@@ -84,13 +85,35 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     val allEvents by viewModel.allEvents.collectAsState()
 
     // Always re-evaluate based on selected date
-    val tasksForDate = viewModel.tasksFor(selectedDate)
+    val tasksForDate = remember(selectedDate, allTasks) {
+        allTasks.filter { task ->
+            val key = selectedDate.toString()
+            val fixed = task.fixedStartIso?.take(10) == key
+            val earliest = task.earliestStartIso?.take(10) == key
+            fixed || earliest
+        }
+    }
 
     val tasksByDate = remember(allTasks) {
         allTasks.groupBy { task -> taskDate(task) }.filterKeys { it != null }.mapKeys { it.key!! }
     }
-    val habitsForDate = viewModel.habitsFor(selectedDate)
-    val eventsForDate = viewModel.eventsFor(selectedDate)
+    val habitsByDate = remember(allHabits) {
+        { date: LocalDate ->
+            val dow3 = date.dayOfWeek.name.take(3).uppercase()
+            allHabits.filter { habit ->
+                val freq = habit.frequency.uppercase()
+                freq == "DAILY" ||
+                        (freq == "WEEKDAYS" && dow3 in listOf("MON", "TUE", "WED", "THU", "FRI")) ||
+                        (freq == "WEEKENDS" && dow3 in listOf("SAT", "SUN")) ||
+                        (freq.isNotBlank() && freq.split(",").map { it.trim() }.contains(dow3))
+            }
+        }
+    }
+    val habitsForDate = remember(selectedDate, allHabits) { habitsByDate(selectedDate) }
+    val eventsByDate = remember(allEvents) {
+        { date: LocalDate -> allEvents.filter { it.dateIso.take(10) == date.toString() } }
+    }
+    val eventsForDate = remember(selectedDate, allEvents) { eventsByDate(selectedDate) }
     val rawSuggestionsForDate = viewModel.smartSuggestions(selectedDate)
     val suggestionItemsForDate = rawSuggestionsForDate.map { suggestion ->
         suggestion.toUiSuggestion(allTasks)
@@ -156,7 +179,8 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                     showSheet = true
                 },
                 tasksByDate = tasksByDate,
-                viewModel = viewModel
+                eventsByDate = eventsByDate,
+                habitsByDate = habitsByDate
             )
         }
 
@@ -177,6 +201,11 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
                 habits = habitsForDate,
                 suggestions = suggestionItemsForDate,
                 onAddEvent = { showAddEventDialog = true },
+                onEditEvent = { event ->
+                    editingEvent = event
+                    showAddEventDialog = true
+                },
+                onDeleteEvent = { event -> viewModel.deleteCalendarEvent(event) },
                 onApplySuggestion = { suggestionItem ->
                     val originalSuggestion = rawSuggestionsForDate.firstOrNull {
                         it.taskId == suggestionItem.taskId &&
@@ -200,10 +229,28 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
     if (showAddEventDialog) {
         AddEventDialog(
             date = selectedDate,
-            onDismiss = { showAddEventDialog = false },
-            onSave = { title, desc, dateIso, timeIso ->
-                viewModel.addCalendarEvent(title, desc, dateIso, timeIso, "GENERAL")
+            initialEvent = editingEvent,
+            onDismiss = {
                 showAddEventDialog = false
+                editingEvent = null
+            },
+            onSave = { title, desc, dateIso, timeIso, durationMinutes ->
+                val editing = editingEvent
+                if (editing == null) {
+                    viewModel.addCalendarEvent(title, desc, dateIso, timeIso, durationMinutes, "GENERAL")
+                } else {
+                    viewModel.updateCalendarEvent(
+                        editing.copy(
+                            title = title,
+                            description = desc,
+                            dateIso = dateIso,
+                            startTimeIso = timeIso,
+                            durationMinutes = durationMinutes
+                        )
+                    )
+                }
+                showAddEventDialog = false
+                editingEvent = null
             }
         )
     }
@@ -216,7 +263,8 @@ fun CalendarMonthGrid(
     selectedDate: LocalDate,
     onSelect: (LocalDate) -> Unit,
     tasksByDate: Map<LocalDate, List<Task>>,
-    viewModel: CalendarViewModel
+    eventsByDate: (LocalDate) -> List<CalendarEvent>,
+    habitsByDate: (LocalDate) -> List<Habit>
 ) {
     val firstDay = month.atDay(1)
     val lastDay = month.atEndOfMonth()
@@ -242,9 +290,9 @@ fun CalendarMonthGrid(
                 return@items
             }
 
-            val events = viewModel.eventsFor(date)
+            val events = eventsByDate(date)
             val tasks = tasksByDate[date].orEmpty()
-            val habits = viewModel.habitsFor(date)
+            val habits = habitsByDate(date)
 
             val isSelected = date == selectedDate
             val isFutureOrToday = !date.isBefore(LocalDate.now())
@@ -314,6 +362,8 @@ fun CalendarBottomSheetContent(
     habits: List<Habit>,
     suggestions: List<CalendarSuggestionUi>,
     onAddEvent: () -> Unit,
+    onEditEvent: (CalendarEvent) -> Unit,
+    onDeleteEvent: (CalendarEvent) -> Unit,
     onApplySuggestion: (CalendarSuggestionUi) -> Unit,
     onTaskCheckedChange: (taskId: Int, isCompleted: Boolean) -> Unit
 ) {
@@ -424,10 +474,27 @@ fun CalendarBottomSheetContent(
         } else {
             events.forEach { event ->
                 val eventTime = extractTimeFromText(event.startTimeIso) ?: "--:--"
+                val eventDuration = event.durationMinutes.coerceAtLeast(1)
                 Text(
-                    text = "• $eventTime ${event.title}",
+                    text = "• $eventTime ${event.title} (${eventDuration}m)",
                     style = MaterialTheme.typography.bodyMedium
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(
+                        text = "Edit",
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { onEditEvent(event) }
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = "Delete",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.clickable { onDeleteEvent(event) }
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
             }
         }
@@ -551,19 +618,21 @@ private fun parseIsoDate(raw: String?): LocalDate? {
 @Composable
 fun AddEventDialog(
     date: LocalDate,
+    initialEvent: CalendarEvent? = null,
     onDismiss: () -> Unit,
-    onSave: (String, String?, String, String) -> Unit
+    onSave: (String, String?, String, String, Int) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
+    var title by remember(initialEvent?.id) { mutableStateOf(initialEvent?.title ?: "") }
+    var description by remember(initialEvent?.id) { mutableStateOf(initialEvent?.description ?: "") }
 
-    var timeIso by remember { mutableStateOf("08:00") }
+    var timeIso by remember(initialEvent?.id) { mutableStateOf(initialEvent?.startTimeIso ?: "08:00") }
+    var durationText by remember(initialEvent?.id) { mutableStateOf((initialEvent?.durationMinutes ?: 60).toString()) }
 
     val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Event") },
+        title = { Text(if (initialEvent == null) "Add Event" else "Edit Event") },
         text = {
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -593,11 +662,20 @@ fun AddEventDialog(
                     Text("Start time")
                     Text(timeIso, style = MaterialTheme.typography.bodyMedium)
                 }
+
+                OutlinedTextField(
+                    value = durationText,
+                    onValueChange = { input ->
+                        durationText = input.filter { it.isDigit() }.take(4)
+                    },
+                    label = { Text("Duration (minutes)") }
+                )
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                onSave(title, description, date.toString(), timeIso)
+                val durationMinutes = durationText.toIntOrNull()?.coerceAtLeast(1) ?: 60
+                onSave(title, description, (initialEvent?.dateIso ?: date.toString()), timeIso, durationMinutes)
             }) { Text("Save") }
         },
         dismissButton = {

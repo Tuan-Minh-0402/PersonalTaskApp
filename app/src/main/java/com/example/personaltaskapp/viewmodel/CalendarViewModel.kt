@@ -47,7 +47,6 @@ class CalendarViewModel(
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val isoDate = DateTimeFormatter.ISO_LOCAL_DATE
-    private val defaultEventDurationMinutes = 60L
     private val appliedSuggestionKeys = MutableStateFlow(setOf<String>())
 
     fun eventsFor(date: LocalDate): List<CalendarEvent> {
@@ -119,6 +118,7 @@ class CalendarViewModel(
                         description = "Auto-scheduled habit",
                         dateIso = date.toString(),
                         startTimeIso = "%02d:%02d".format(hour, minute),
+                        durationMinutes = habit.durationMinutes.coerceAtLeast(1),
                         type = "HABIT"
                     )
                     val duplicateExists = allEvents.value.any { existing ->
@@ -141,6 +141,7 @@ class CalendarViewModel(
         desc: String?,
         dateIso: String,
         timeIso: String,
+        durationMinutes: Int,
         type: String
     ) {
         viewModelScope.launch {
@@ -150,10 +151,19 @@ class CalendarViewModel(
                     description = desc,
                     dateIso = dateIso,
                     startTimeIso = timeIso,
+                    durationMinutes = durationMinutes.coerceAtLeast(1),
                     type = type
                 )
             )
         }
+    }
+
+    fun updateCalendarEvent(event: CalendarEvent) {
+        viewModelScope.launch { calendarRepo.updateEvent(event) }
+    }
+
+    fun deleteCalendarEvent(event: CalendarEvent) {
+        viewModelScope.launch { calendarRepo.deleteEvent(event) }
     }
 
     private fun buildSchedulerInput(selectedDate: LocalDate): SmartSchedulerInput {
@@ -174,7 +184,7 @@ class CalendarViewModel(
         }
 
         val eventBlocks = eventsFor(selectedDate).mapNotNull { event ->
-            event.toBusyBlock(selectedDate, defaultEventDurationMinutes)
+            event.toBusyBlock(selectedDate)
         }
 
         val fixedTaskBlocks = allTasks.value.mapNotNull { task ->
@@ -245,14 +255,14 @@ class CalendarViewModel(
     }
 
     private fun CalendarEvent.toBusyBlock(
-        selectedDate: LocalDate,
-        fallbackDurationMinutes: Long
+        selectedDate: LocalDate
     ): SmartSchedulerBusyBlock? {
         val startTime = runCatching { LocalTime.parse(startTimeIso.take(5)) }.getOrNull() ?: return null
         val start = LocalDateTime.of(selectedDate, startTime)
+        val duration = durationMinutes.coerceAtLeast(1).toLong()
         return SmartSchedulerBusyBlock(
             start = start,
-            end = start.plusMinutes(fallbackDurationMinutes)
+            end = start.plusMinutes(duration)
         )
     }
 }

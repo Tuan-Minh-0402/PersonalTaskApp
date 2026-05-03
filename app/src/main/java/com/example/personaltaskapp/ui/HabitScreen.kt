@@ -27,6 +27,7 @@ import com.example.personaltaskapp.viewmodel.HabitViewModel
 fun HabitScreen(viewModel: HabitViewModel) {
     val habits by viewModel.habits.collectAsState(initial = emptyList())
     var showAddDialog by remember { mutableStateOf(false) }
+    var editingHabit by remember { mutableStateOf<Habit?>(null) }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Habit Tracker") }) },
@@ -50,6 +51,7 @@ fun HabitScreen(viewModel: HabitViewModel) {
                     habits.forEach { habit ->
                         HabitItem(
                             habit = habit,
+                            onEdit = { editingHabit = habit },
                             onDelete = { viewModel.deleteHabit(habit) }
                         )
                     }
@@ -58,19 +60,24 @@ fun HabitScreen(viewModel: HabitViewModel) {
         }
     }
 
-    if (showAddDialog) {
+    if (showAddDialog || editingHabit != null) {
         AddHabitDialog(
-            onDismiss = { showAddDialog = false },
-            onSave = { newHabit ->
-                viewModel.addHabit(newHabit)
+            initialHabit = editingHabit,
+            onDismiss = {
                 showAddDialog = false
+                editingHabit = null
+            },
+            onSave = { savedHabit ->
+                if (editingHabit == null) viewModel.addHabit(savedHabit) else viewModel.updateHabit(savedHabit)
+                showAddDialog = false
+                editingHabit = null
             }
         )
     }
 }
 
 @Composable
-fun HabitItem(habit: Habit, onDelete: () -> Unit) {
+fun HabitItem(habit: Habit, onEdit: () -> Unit, onDelete: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp)
@@ -94,6 +101,12 @@ fun HabitItem(habit: Habit, onDelete: () -> Unit) {
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Text(
+                    text = "Edit",
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { onEdit() }
+                )
+                Spacer(Modifier.width(16.dp))
+                Text(
                     text = "Delete",
                     color = Color.Red,
                     modifier = Modifier.clickable { onDelete() }
@@ -106,14 +119,25 @@ fun HabitItem(habit: Habit, onDelete: () -> Unit) {
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun AddHabitDialog(
+    initialHabit: Habit? = null,
     onDismiss: () -> Unit,
     onSave: (Habit) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
+    var title by remember(initialHabit?.id) { mutableStateOf(initialHabit?.title ?: "") }
 
     // Frequency selection
     val freqOptions = listOf("Daily", "Weekdays", "Weekends", "Custom")
-    var selectedFreq by remember { mutableStateOf(freqOptions.first()) }
+    var selectedFreq by remember(initialHabit?.id) {
+        mutableStateOf(
+            when (initialHabit?.frequency) {
+                "DAILY" -> "Daily"
+                "MON,TUE,WED,THU,FRI" -> "Weekdays"
+                "SAT,SUN" -> "Weekends"
+                null -> freqOptions.first()
+                else -> "Custom"
+            }
+        )
+    }
 
     // Custom days
     val customDays = remember {
@@ -123,7 +147,7 @@ fun AddHabitDialog(
 
     // Time Picker
     val context = LocalContext.current
-    var startMinutes by remember { mutableStateOf(8 * 60) } // default 08:00
+    var startMinutes by remember(initialHabit?.id) { mutableStateOf(initialHabit?.startMinutes ?: 8 * 60) }
     val timePicker = TimePickerDialog(
         context,
         { _, hour, minute -> startMinutes = hour * 60 + minute },
@@ -132,11 +156,11 @@ fun AddHabitDialog(
         true
     )
 
-    var duration by remember { mutableStateOf(30) }
+    var duration by remember(initialHabit?.id) { mutableStateOf(initialHabit?.durationMinutes ?: 30) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Habit") },
+        title = { Text(if (initialHabit == null) "Add Habit" else "Edit Habit") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -215,11 +239,14 @@ fun AddHabitDialog(
 
                 onSave(
                     Habit(
+                        id = initialHabit?.id ?: 0,
                         title = title,
+                        description = initialHabit?.description,
                         frequency = freq,
                         startMinutes = startMinutes,
                         durationMinutes = duration,
-                        streak = 0
+                        streak = initialHabit?.streak ?: 0,
+                        lastCompletedIso = initialHabit?.lastCompletedIso
                     )
                 )
             }) {

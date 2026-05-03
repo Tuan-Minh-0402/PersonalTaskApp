@@ -16,5 +16,6 @@ data class CalendarEvent(
 
     // ISO LocalTime (HH:mm)
     val startTimeIso: String,
+    val durationMinutes: Int = 60,
     val type: String
 )

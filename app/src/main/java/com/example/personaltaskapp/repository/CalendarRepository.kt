@@ -9,6 +9,7 @@ class CalendarRepository(private val dao: CalendarEventDao) {
     fun getAllEvents(): Flow<List<CalendarEvent>> = dao.getAllEvents()
 
     suspend fun insertEvent(event: CalendarEvent) = dao.insert(event)
+    suspend fun updateEvent(event: CalendarEvent) = dao.update(event)
 
     suspend fun deleteEvent(event: CalendarEvent) = dao.delete(event)
 }

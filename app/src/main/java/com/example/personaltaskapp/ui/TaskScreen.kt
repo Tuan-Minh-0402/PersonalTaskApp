@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -65,6 +66,7 @@ fun TaskScreen(
 
     val isAllSelected = !filterActive && !filterDone && !filterDueSoon
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
+    var editingTask by remember { mutableStateOf<Task?>(null) }
 
     // Pomodoro dialog flags
     var showPomodoroSelector by rememberSaveable { mutableStateOf(false) }
@@ -156,7 +158,9 @@ fun TaskScreen(
                             task = task,
                             onToggleComplete = {
                                 viewModel.updateTask(task.copy(isCompleted = !task.isCompleted))
-                            }
+                            },
+                            onEdit = { editingTask = task },
+                            onDelete = { viewModel.deleteTask(task) }
                         )
                     }
                 }
@@ -164,13 +168,18 @@ fun TaskScreen(
         }
 
         // ---- Add Task Dialog ----
-        if (showAddDialog) {
+        if (showAddDialog || editingTask != null) {
             AddTaskDialog(
                 context = context,
-                onDismiss = { showAddDialog = false },
-                onSave = {
-                    viewModel.addTask(it)
+                initialTask = editingTask,
+                onDismiss = {
                     showAddDialog = false
+                    editingTask = null
+                },
+                onSave = { savedTask ->
+                    if (editingTask == null) viewModel.addTask(savedTask) else viewModel.updateTask(savedTask)
+                    showAddDialog = false
+                    editingTask = null
                 }
             )
         }
@@ -218,7 +227,12 @@ fun FilterButton(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun TaskRow(task: Task, onToggleComplete: () -> Unit) {
+fun TaskRow(
+    task: Task,
+    onToggleComplete: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     Card(Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(12.dp),
@@ -253,22 +267,41 @@ fun TaskRow(task: Task, onToggleComplete: () -> Unit) {
 
             Checkbox(task.isCompleted, { onToggleComplete() })
         }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Text(
+                text = "Edit",
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable { onEdit() }
+            )
+            Spacer(Modifier.width(16.dp))
+            Text(
+                text = "Delete",
+                color = Color.Red,
+                modifier = Modifier.clickable { onDelete() }
+            )
+        }
     }
 }
 
 @Composable
 fun AddTaskDialog(
     context: Context,
+    initialTask: Task? = null,
     onDismiss: () -> Unit,
     onSave: (Task) -> Unit
 ) {
-    var title by rememberSaveable { mutableStateOf("") }
-    var description by rememberSaveable { mutableStateOf("") }
-    var durationInput by rememberSaveable { mutableStateOf("30") }
-    var priority by rememberSaveable { mutableStateOf(2) }
-    var dueDate by rememberSaveable { mutableStateOf<String?>(null) }
-    var isFlexible by rememberSaveable { mutableStateOf(true) }
-    var selectedTime by rememberSaveable { mutableStateOf<String?>(null) }
+    var title by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.title ?: "") }
+    var description by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.description ?: "") }
+    var durationInput by rememberSaveable(initialTask?.id) { mutableStateOf((initialTask?.estimatedMinutes ?: 30).toString()) }
+    var priority by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.priority ?: 2) }
+    var dueDate by rememberSaveable(initialTask?.id) { mutableStateOf<String?>(initialTask?.dueDateIso) }
+    var isFlexible by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.isFlexible ?: true) }
+    var selectedTime by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.fixedStartIso?.takeLast(5)) }
 
     var showPicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -323,7 +356,7 @@ fun AddTaskDialog(
     AlertDialog(
         modifier = Modifier.fillMaxWidth(0.95f),
         onDismissRequest = onDismiss,
-        title = { Text("Add Task") },
+        title = { Text(if (initialTask == null) "Add Task" else "Edit Task") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 
@@ -410,14 +443,23 @@ fun AddTaskDialog(
                 }
                 onSave(
                     Task(
+                        id = initialTask?.id ?: 0,
                         title = title,
                         description = description.ifBlank { null },
+                        isCompleted = initialTask?.isCompleted ?: false,
                         estimatedMinutes = durationMinutes,
+                        earliestStartIso = initialTask?.earliestStartIso,
+                        latestEndIso = initialTask?.latestEndIso,
+                        mustFinishToday = initialTask?.mustFinishToday ?: false,
+                        minSessionMinutes = initialTask?.minSessionMinutes ?: 25,
+                        maxSessionMinutes = initialTask?.maxSessionMinutes ?: 60,
                         dueDateIso = dueDate,
                         priority = priority,
                         isFlexible = isFlexible,
                         fixedStartIso = fixedStartIso,
-                        pomodoroCount = 4,  // default
+                        completedMinutes = initialTask?.completedMinutes ?: 0,
+                        pomodoroCount = initialTask?.pomodoroCount ?: 4,
+                        completedPomodoros = initialTask?.completedPomodoros ?: 0
                     )
                 )
             }) { Text("Save") }
