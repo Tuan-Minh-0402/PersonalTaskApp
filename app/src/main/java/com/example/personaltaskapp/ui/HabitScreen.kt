@@ -22,7 +22,6 @@ import com.example.personaltaskapp.model.Habit
 import com.example.personaltaskapp.viewmodel.HabitViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
-@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun HabitScreen(viewModel: HabitViewModel) {
     val habits by viewModel.habits.collectAsState(initial = emptyList())
@@ -116,7 +115,6 @@ fun HabitItem(habit: Habit, onEdit: () -> Unit, onDelete: () -> Unit) {
     }
 }
 
-@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun AddHabitDialog(
     initialHabit: Habit? = null,

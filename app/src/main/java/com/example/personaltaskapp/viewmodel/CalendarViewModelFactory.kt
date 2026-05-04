@@ -14,7 +14,6 @@ class CalendarViewModelFactory(
     private val habitRepo: HabitRepository
 ) : ViewModelProvider.Factory {
 
-    @RequiresApi(Build.VERSION_CODES.O)
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(CalendarViewModel::class.java)) {

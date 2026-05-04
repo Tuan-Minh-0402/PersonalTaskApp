@@ -1,8 +1,6 @@
 package com.example.personaltaskapp.ui
 
 import android.app.TimePickerDialog
-import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -604,7 +602,6 @@ private fun extractTaskTime(task: Task): String {
         ?: "--:--"
 }
 
-@RequiresApi(Build.VERSION_CODES.O)
 private fun taskDate(task: Task): LocalDate? {
     return parseIsoDate(task.fixedStartIso)
         ?: parseIsoDate(task.earliestStartIso)
@@ -633,7 +630,6 @@ private fun formatSuggestionTimeRange(startIso: String?, endIso: String?): Strin
     )
 }
 
-@RequiresApi(Build.VERSION_CODES.O)
 private fun parseIsoDate(raw: String?): LocalDate? {
     if (raw.isNullOrBlank()) return null
     val datePart = raw.trim().take(10)

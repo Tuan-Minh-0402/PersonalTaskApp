@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.personaltaskapp.model.User
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.core.content.edit
 
 class AuthManager(context: Context) {
     private val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
@@ -27,19 +28,19 @@ class AuthManager(context: Context) {
             return Result.failure(IllegalArgumentException("Wrong password"))
         }
 
-        prefs.edit()
-            .putBoolean(KEY_IS_LOGGED_IN, true)
-            .putString(KEY_CURRENT_EMAIL, user.email)
-            .apply()
+        prefs.edit {
+            putBoolean(KEY_IS_LOGGED_IN, true)
+                .putString(KEY_CURRENT_EMAIL, user.email)
+        }
 
         return Result.success(Unit)
     }
 
     fun logout() {
-        prefs.edit()
-            .putBoolean(KEY_IS_LOGGED_IN, false)
-            .remove(KEY_CURRENT_EMAIL)
-            .apply()
+        prefs.edit {
+            putBoolean(KEY_IS_LOGGED_IN, false)
+                .remove(KEY_CURRENT_EMAIL)
+        }
     }
 
     fun isLoggedIn(): Boolean = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
@@ -72,7 +73,7 @@ class AuthManager(context: Context) {
                     .put("password", user.password)
             )
         }
-        prefs.edit().putString(KEY_USERS, array.toString()).apply()
+        prefs.edit { putString(KEY_USERS, array.toString()) }
     }
 
     private companion object {

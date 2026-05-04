@@ -74,7 +74,6 @@ fun TaskScreen(
 
     // --- Pomodoro state collectors ---
     val secondsLeft by viewModel.pomodoro.secondsLeft.collectAsState()
-    val pomodoroState by viewModel.pomodoro.state.collectAsState()
     val isPomodoroRunning by viewModel.pomodoro.isRunning.collectAsState()
 
 
@@ -201,7 +200,6 @@ fun TaskScreen(
         if (showPomodoroRunning && isPomodoroRunning) {
             PomodoroRunningDialog(
                 secondsLeft = secondsLeft,
-                state = pomodoroState,
                 onCancel = {
                     viewModel.pomodoro.cancel()
                     showPomodoroRunning = false

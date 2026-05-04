@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 class HabitRepository(private val dao: HabitDao) {
 
     // Flow of all habits (single source of truth)
-    fun getAllHabits(): Flow<List<Habit>> = dao.getAllHabits()
+    private fun getAllHabits(): Flow<List<Habit>> = dao.getAllHabits()
 
     // Convenience property if you prefer a property name
     val habits: Flow<List<Habit>> get() = getAllHabits()

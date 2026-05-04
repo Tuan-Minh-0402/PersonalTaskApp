@@ -2,6 +2,7 @@ package com.example.personaltaskapp.viewmodel
 
 import com.example.personaltaskapp.model.PomodoroState
 import com.example.personaltaskapp.model.Task
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -26,6 +27,7 @@ class PomodoroManager(
     private var currentTask: Task? = null
 
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun start(task: Task) {
         if (_isRunning.value) return
 

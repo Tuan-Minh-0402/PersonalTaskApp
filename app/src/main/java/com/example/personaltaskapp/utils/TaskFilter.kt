@@ -26,7 +26,7 @@ object TaskFilter {
      * @param tasks - list of all tasks
      * @param level - 1 = High, 2 = Medium, 3 = Low
      */
-    fun filterByPriority(tasks: List<Task>, level: Int): List<Task> {
+    private fun filterByPriority(tasks: List<Task>, level: Int): List<Task> {
         return tasks.filter { it.priority == level }
     }
 
@@ -34,7 +34,6 @@ object TaskFilter {
      * Filter tasks that are due soon (e.g., within N days).
      * If dueDateIso is null, task is ignored.
      */
-    @RequiresApi(Build.VERSION_CODES.O)
     fun filterByDueDate(tasks: List<Task>, withinDays: Long = 3): List<Task> {
         val today = LocalDate.now()
         return tasks.filter { task ->
@@ -48,14 +47,13 @@ object TaskFilter {
     /**
      * Filter tasks that have unfinished Pomodoro sessions.
      */
-    fun filterByPomodoroPending(tasks: List<Task>): List<Task> {
+    private fun filterByPomodoroPending(tasks: List<Task>): List<Task> {
         return tasks.filter { it.completedPomodoros < it.pomodoroCount }
     }
 
     /**
      * Combine multiple filters easily.
      */
-    @RequiresApi(Build.VERSION_CODES.O)
     fun filter(
         tasks: List<Task>,
         showCompleted: Boolean? = null,

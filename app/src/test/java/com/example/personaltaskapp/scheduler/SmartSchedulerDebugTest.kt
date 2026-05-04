@@ -82,7 +82,7 @@ class SmartSchedulerDebugTest {
         assertEquals("TIGHT", result.scheduled.first().taskId)
     }
 
-            @Test
+    @Test
     fun habitBusyBlock_shouldTreatHabitAsBusy() {
         val result = runCase(SmartSchedulerTestDataProvider.habitBusyBlockCase())
         val scheduled = result.scheduled.firstOrNull { it.taskId == "H1" }

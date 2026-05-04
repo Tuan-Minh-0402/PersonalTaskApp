@@ -10,7 +10,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.example.personaltaskapp.model.PomodoroState
 import com.example.personaltaskapp.model.Task
 
 // ─────────────────────────────────────────────
@@ -61,8 +60,7 @@ fun PomodoroTaskSelectorDialog(
 @Composable
 fun PomodoroRunningDialog(
     secondsLeft: Int,
-    onCancel: () -> Unit,
-    state: PomodoroState
+    onCancel: () -> Unit
 ) {
     Dialog(onDismissRequest = onCancel) {
         Surface(shape = MaterialTheme.shapes.medium) {

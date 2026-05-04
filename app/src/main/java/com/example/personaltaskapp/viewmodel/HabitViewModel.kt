@@ -27,5 +27,4 @@ class HabitViewModel(private val repo: HabitRepository) : ViewModel() {
         repo.deleteHabit(habit)
     }
 
-    suspend fun getHabitById(id: Int): Habit? = repo.getHabitById(id)
 }

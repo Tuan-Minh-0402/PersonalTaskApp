@@ -50,18 +50,9 @@ class CalendarViewModel(
     private val isoDate = DateTimeFormatter.ISO_LOCAL_DATE
     private val appliedSuggestionKeys = MutableStateFlow(setOf<String>())
 
-    fun eventsFor(date: LocalDate): List<CalendarEvent> {
+    private fun eventsFor(date: LocalDate): List<CalendarEvent> {
         val key = date.format(isoDate)
         return allEvents.value.filter { it.dateIso.take(10) == key }
-    }
-
-    fun tasksFor(date: LocalDate): List<Task> {
-        val key = date.format(isoDate)
-        return allTasks.value.filter { task ->
-            val fixed = task.fixedStartIso?.take(10) == key
-            val earliest = task.earliestStartIso?.take(10) == key
-            fixed || earliest
-        }
     }
 
     fun updateTaskCompletion(taskId: Int, isCompleted: Boolean) {
@@ -71,7 +62,7 @@ class CalendarViewModel(
         }
     }
 
-    fun habitsFor(date: LocalDate): List<Habit> {
+    private fun habitsFor(date: LocalDate): List<Habit> {
         val dow3 = date.dayOfWeek.name.take(3).uppercase()
         return allHabits.value.filter { habit ->
             val freq = habit.frequency.uppercase()
